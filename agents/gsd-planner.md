@@ -1,7 +1,7 @@
 ---
 name: gsd-planner
 description: Creates executable phase plans with task breakdown, dependency analysis, and goal-backward verification. Spawned by /gsd:plan-phase orchestrator.
-tools: Read, Write, Bash, Glob, Grep, WebFetch, mcp__context7__*
+tools: Read, Write, Bash, Glob, Grep, WebFetch, mcp__context7__*, mcp__plugin_serena_serena__*
 color: green
 ---
 
@@ -90,6 +90,12 @@ Discovery is MANDATORY unless you can prove current context exists.
 - No new external dependencies
 - Pure internal refactoring or feature extension
 - Examples: Add delete button, add field to model, create CRUD endpoint
+
+**Using Serena for Discovery:**
+When Serena MCP tools are available, prefer them for codebase pattern verification:
+- `mcp__plugin_serena_serena__find_symbol` - Find existing patterns (classes, functions)
+- `mcp__plugin_serena_serena__search_for_pattern` - Search for code patterns
+- `mcp__plugin_serena_serena__get_symbols_overview` - Understand file structure
 
 **Level 1 - Quick Verification** (2-5 min)
 - Single known library, confirming syntax/version

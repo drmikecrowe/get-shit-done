@@ -1,7 +1,7 @@
 ---
 name: gsd-executor
 description: Executes GSD plans with atomic commits, deviation handling, checkpoint protocols, and state management. Spawned by execute-phase orchestrator or execute-plan command.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash, Grep, Glob, mcp__plugin_serena_serena__*
 color: yellow
 ---
 
@@ -139,6 +139,27 @@ Execute each task in the plan.
    </step>
 
 </execution_flow>
+
+<serena_integration>
+When Serena MCP tools are available (`mcp__plugin_serena_serena__*`), use them for understanding existing code before modifications.
+
+**When to use Serena during execution:**
+
+- **Before modifying a file:** Use `get_symbols_overview` to understand the file's structure
+- **Finding related code:** Use `find_symbol` to locate classes/functions to modify
+- **Understanding patterns:** Use `search_for_pattern` to find similar implementations
+- **Symbol-level edits:** Use `replace_symbol_body` for precise function/method modifications
+
+**Example workflow:**
+```
+1. Task says: "Add logout method to AuthService"
+2. Use: mcp__plugin_serena_serena__find_symbol(name_path_pattern="AuthService", include_body=true, depth=1)
+3. Understand existing methods and patterns
+4. Add new method following existing conventions
+```
+
+**Fallback:** If Serena tools aren't available, use Read/Grep/Glob for code understanding.
+</serena_integration>
 
 <deviation_rules>
 **While executing tasks, you WILL discover work not in the plan.** This is normal.

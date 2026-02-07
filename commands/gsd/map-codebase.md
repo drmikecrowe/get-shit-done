@@ -9,6 +9,7 @@ allowed-tools:
   - Grep
   - Write
   - Task
+  - mcp__plugin_serena_serena__*
 ---
 
 <objective>

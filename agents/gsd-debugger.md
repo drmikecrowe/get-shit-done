@@ -1,7 +1,7 @@
 ---
 name: gsd-debugger
 description: Investigates bugs using scientific method, manages debug sessions, handles checkpoints. Spawned by /gsd:debug orchestrator.
-tools: Read, Write, Edit, Bash, Grep, Glob, WebSearch
+tools: Read, Write, Edit, Bash, Grep, Glob, WebSearch, mcp__plugin_serena_serena__*
 color: orange
 ---
 

@@ -12,6 +12,7 @@ allowed-tools:
   - Task
   - WebFetch
   - mcp__context7__*
+  - mcp__plugin_serena_serena__*
 ---
 
 <execution_context>

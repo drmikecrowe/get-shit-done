@@ -10,6 +10,7 @@ allowed-tools:
   - Edit
   - Write
   - Task
+  - mcp__plugin_serena_serena__*
 ---
 
 <objective>

@@ -1,7 +1,7 @@
 ---
 name: gsd-codebase-mapper
 description: Explores codebase and writes structured analysis documents. Spawned by map-codebase with a focus area (tech, arch, quality, concerns). Writes documents directly to reduce orchestrator context load.
-tools: Read, Bash, Grep, Glob, Write
+tools: Read, Bash, Grep, Glob, Write, mcp__plugin_serena_serena__*
 color: cyan
 ---
 
@@ -64,6 +64,64 @@ Describe only what IS, never what WAS or what you considered. No temporal langua
 Your documents guide future Claude instances writing code. "Use X pattern" is more useful than "X pattern is used."
 </philosophy>
 
+<serena_tools>
+## Serena MCP Integration
+
+When Serena MCP tools are available (`mcp__plugin_serena_serena__*`), **prefer them for semantic code analysis** over raw Bash/Grep commands.
+
+### Tool Selection
+
+| Task | Prefer Serena | Fallback |
+|------|--------------|----------|
+| Get file symbol overview | `get_symbols_overview` | Read file + manual parsing |
+| Find classes/functions | `find_symbol` | Grep for pattern |
+| Search code patterns | `search_for_pattern` | Grep |
+| List directories | `list_dir` | `ls` via Bash |
+| Read file content | `read_file` | Read tool |
+
+### When to Use Serena
+
+**Use Serena when:**
+- Analyzing code structure (classes, functions, methods)
+- Finding symbol relationships
+- Understanding architecture (imports, dependencies)
+- Searching for patterns in code files
+
+**Use traditional tools when:**
+- Checking config files (package.json, tsconfig.json)
+- Running shell commands (wc, find for file stats)
+- Serena tools return errors (fall back gracefully)
+
+### Detection
+
+Check if Serena is available by attempting a simple operation. If tools fail, fall back to traditional approach:
+
+```
+1. Try: mcp__plugin_serena_serena__list_dir for root directory
+2. If works: Use Serena tools throughout
+3. If fails: Fall back to Bash/Grep/Glob approach
+```
+
+### Key Serena Tools for Mapping
+
+**`get_symbols_overview`** - Get classes, functions, methods in a file
+- Use for: ARCHITECTURE.md, CONVENTIONS.md
+- Parameters: `relative_path`, `depth` (0 for top-level, 1+ for nested)
+
+**`find_symbol`** - Find symbol by name pattern
+- Use for: Finding specific patterns, architecture analysis
+- Parameters: `name_path_pattern`, `include_body`, `depth`
+
+**`search_for_pattern`** - Regex search across codebase
+- Use for: Finding TODO/FIXME, import patterns, code conventions
+- Parameters: `substring_pattern`, `relative_path`, `paths_include_glob`
+
+**`list_dir`** - List directory contents
+- Use for: STRUCTURE.md, understanding layout
+- Parameters: `relative_path`, `recursive`
+
+</serena_tools>
+
 <process>
 
 <step name="parse_focus">
@@ -78,6 +136,89 @@ Based on focus, determine which documents you'll write:
 
 <step name="explore_codebase">
 Explore the codebase thoroughly for your focus area.
+
+**PREFER SERENA TOOLS** when available for semantic code analysis. Fall back to Bash/Grep if Serena is unavailable.
+
+---
+
+## Using Serena (Preferred)
+
+**For tech focus:**
+```
+# List root to find package manifests
+mcp__plugin_serena_serena__list_dir(relative_path=".", recursive=false)
+
+# Read package.json for dependencies
+mcp__plugin_serena_serena__read_file(relative_path="package.json")
+
+# Search for SDK imports
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="import.*(?:stripe|supabase|aws|openai)",
+  paths_include_glob="**/*.{ts,tsx,js,jsx}",
+  context_lines_after=0
+)
+```
+
+**For arch focus:**
+```
+# Directory structure
+mcp__plugin_serena_serena__list_dir(relative_path=".", recursive=true)
+
+# Get symbol overview for key files (classes, functions, exports)
+mcp__plugin_serena_serena__get_symbols_overview(relative_path="src/index.ts", depth=1)
+
+# Find entry points and main abstractions
+mcp__plugin_serena_serena__find_symbol(name_path_pattern="App", include_body=false, depth=1)
+
+# Understand import patterns
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="^import",
+  paths_include_glob="src/**/*.ts",
+  restrict_search_to_code_files=true
+)
+```
+
+**For quality focus:**
+```
+# Get symbol overview to understand naming patterns
+mcp__plugin_serena_serena__get_symbols_overview(relative_path="src/services/user.ts", depth=2)
+
+# Search for test patterns
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="describe\\(|it\\(|test\\(",
+  paths_include_glob="**/*.{test,spec}.{ts,tsx,js}",
+  context_lines_after=2
+)
+
+# Find error handling patterns
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="try\\s*\\{|catch\\s*\\(",
+  restrict_search_to_code_files=true
+)
+```
+
+**For concerns focus:**
+```
+# Find TODOs, FIXMEs
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="TODO|FIXME|HACK|XXX",
+  restrict_search_to_code_files=true,
+  context_lines_before=1,
+  context_lines_after=1
+)
+
+# Find potential stubs/incomplete code
+mcp__plugin_serena_serena__search_for_pattern(
+  substring_pattern="return null|return \\[\\]|throw new Error\\(['\"]Not implemented",
+  restrict_search_to_code_files=true
+)
+```
+
+---
+
+## Fallback: Traditional Tools
+
+If Serena is unavailable, use these Bash/Grep approaches:
 
 **For tech focus:**
 ```bash
@@ -130,7 +271,9 @@ find src/ -name "*.ts" -o -name "*.tsx" | xargs wc -l 2>/dev/null | sort -rn | h
 grep -rn "return null\|return \[\]\|return {}" src/ --include="*.ts" --include="*.tsx" 2>/dev/null | head -30
 ```
 
-Read key files identified during exploration. Use Glob and Grep liberally.
+---
+
+Read key files identified during exploration. Use Serena's `get_symbols_overview` for understanding code structure, or Glob/Grep as fallback.
 </step>
 
 <step name="write_documents">

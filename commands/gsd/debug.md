@@ -7,6 +7,7 @@ allowed-tools:
   - Bash
   - Task
   - AskUserQuestion
+  - mcp__plugin_serena_serena__*
 ---
 
 <objective>
