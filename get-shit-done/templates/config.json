@@ -32,5 +32,20 @@
   "safety": {
     "always_confirm_destructive": true,
     "always_confirm_external_services": true
+  },
+  "beads_integration": {
+    "enabled": true,
+    "auto_create_epics": true,
+    "auto_create_plan_beads": true,
+    "sync_on_session_end": true,
+    "track_status": true
+  },
+  "serena_integration": {
+    "enabled": true,
+    "project_path": "",
+    "project_name": "",
+    "is_worktree": false,
+    "branch": "main",
+    "auto_onboard": true
   }
 }

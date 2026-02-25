@@ -28,6 +28,39 @@ Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelizat
 When `parallelization` is false, plans within a wave execute sequentially.
 </step>
 
+<step name="check_beads_status">
+**Check bead status for current phase (if beads is initialized):**
+
+```bash
+# Only proceed if beads is available
+if command -v bd &> /dev/null && [ -d .beads ]; then
+    # Get ready work for current phase
+    PHASE_BEADS=$(bd list -t task --label "phase-${phase_number}" --status ready --json 2>/dev/null || echo "[]")
+    
+    if [ "$PHASE_BEADS" != "[]" ]; then
+        echo ""
+        echo "📊 Beads: Ready work in phase ${phase_number}"
+        echo "$PHASE_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"' | head -5
+        echo ""
+    fi
+    
+    # Check for blocked beads
+    BLOCKED_BEADS=$(bd list -t task --label "phase-${phase_number}" --status blocked --json 2>/dev/null || echo "[]")
+    
+    if [ "$BLOCKED_BEADS" != "[]" ]; then
+        echo "⚠️  WARNING: Blocked work in phase ${phase_number}"
+        echo "$BLOCKED_BEADS" | jq -r '.[] | "  • \(.id): \(.title) - \(.status)"'
+        echo ""
+        echo "Blocked items must be resolved before continuing."
+        echo "Run 'bd show {bead-id}' to see blocker details."
+        echo ""
+    fi
+fi
+```
+
+**Non-blocking:** Continue execution even if beads check fails or shows blockers.
+</step>
+
 <step name="handle_branching">
 Check `branching_strategy` from init:
 
@@ -99,6 +132,19 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    Pass paths only — executors read files themselves with their fresh 200k context.
    This keeps orchestrator context lean (~10-15%).
 
+   **Before spawning each agent:** Update bead status to in_progress (if beads is available):
+   ```bash
+   if command -v bd &> /dev/null && [ -d .beads ]; then
+       # Find bead for this plan
+       PLAN_FILE="{plan_file}"
+       BEAD_ID=$(grep -Po '^bead_id: \K.*' "{phase_dir}/${PLAN_FILE}" 2>/dev/null || echo "")
+       
+       if [ -n "$BEAD_ID" ]; then
+           bd update "$BEAD_ID" --status in_progress --quiet 2>/dev/null
+       fi
+   fi
+   ```
+
    ```
    Task(
      subagent_type="gsd-executor",
@@ -148,6 +194,20 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
    If pass:
+   
+   **Update bead status to closed (if beads is available):**
+   ```bash
+   if command -v bd &> /dev/null && [ -d .beads ]; then
+       # Find bead for this plan
+       PLAN_FILE="{plan_file}"
+       BEAD_ID=$(grep -Po '^bead_id: \K.*' "{phase_dir}/${PLAN_FILE}" 2>/dev/null || echo "")
+       
+       if [ -n "$BEAD_ID" ]; then
+           bd close "$BEAD_ID" --reason "Completed: {what was built from SUMMARY}" --quiet 2>/dev/null
+       fi
+   fi
+   ```
+
    ```
    ---
    ## Wave {N} Complete

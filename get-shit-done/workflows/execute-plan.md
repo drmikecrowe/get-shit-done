@@ -120,6 +120,46 @@ cat .planning/phases/XX-name/{phase}-{plan}-PLAN.md
 This IS the execution instructions. Follow exactly. If plan references CONTEXT.md: honor user's vision throughout.
 </step>
 
+<step name="check_bead_status">
+**Check bead status for this plan (if beads is initialized):**
+
+```bash
+if command -v bd &> /dev/null && [ -d .beads ]; then
+    # Extract bead_id from plan frontmatter
+    BEAD_ID=$(grep -Po '^bead_id: \K.*' .planning/phases/XX-name/{phase}-{plan}-PLAN.md 2>/dev/null || echo "")
+    
+    if [ -n "$BEAD_ID" ]; then
+        # Check bead status
+        BEAD_STATUS=$(bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.status // "unknown"' || echo "unknown")
+        
+        case "$BEAD_STATUS" in
+            "blocked")
+                echo "⚠️  WARNING: This plan's bead is blocked!"
+                bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.blockers[]? | "  • \(.type): \(.description)"'
+                echo ""
+                echo "Blocker(s) must be resolved before continuing."
+                echo "Run 'bd show $BEAD_ID' for details."
+                # Continue execution anyway - let user decide
+                ;;
+            "closed")
+                echo "ℹ️  NOTE: This plan's bead is already closed. Re-executing..."
+                ;;
+            "in_progress")
+                echo "📊 Bead status: in_progress"
+                ;;
+            *)
+                # Update to in_progress
+                bd update "$BEAD_ID" -s in_progress --quiet 2>/dev/null
+                echo "📊 Bead status updated to in_progress"
+                ;;
+        esac
+    fi
+fi
+```
+
+**Non-blocking:** Continue execution even if beads check fails.
+</step>
+
 <step name="previous_phase_check">
 ```bash
 node ~/.claude/get-shit-done/bin/gsd-tools.cjs phases list --type summaries --raw
@@ -392,6 +432,22 @@ Extract requirement IDs from the plan's frontmatter (e.g., `requirements: [AUTH-
 
 <step name="git_commit_metadata">
 Task code already committed per-task. Commit plan metadata:
+
+**Update bead status to closed (if beads is available):**
+```bash
+if command -v bd &> /dev/null && [ -d .beads ]; then
+    BEAD_ID=$(grep -Po '^bead_id: \K.*' .planning/phases/XX-name/{phase}-{plan}-PLAN.md 2>/dev/null || echo "")
+    
+    if [ -n "$BEAD_ID" ]; then
+        # Extract one-liner from SUMMARY
+        ONELINER=$(head -20 .planning/phases/XX-name/{phase}-{plan}-SUMMARY.md | grep "^#" | tail -1 | sed 's/^# //')
+        bd close "$BEAD_ID" --reason "Completed: ${ONELINER}" --quiet 2>/dev/null
+    fi
+    
+    # Sync beads database
+    bd sync --quiet 2>/dev/null
+fi
+```
 
 ```bash
 node ~/.claude/get-shit-done/bin/gsd-tools.cjs commit "docs({phase}-{plan}): complete [plan-name] plan" --files .planning/phases/XX-name/{phase}-{plan}-SUMMARY.md .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md

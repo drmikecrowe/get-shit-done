@@ -58,6 +58,48 @@ Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `co
 git init
 ```
 
+## 1.5. Initialize Serena
+
+**Initialize Serena with proper project detection:**
+
+```bash
+# Check if Serena MCP is available
+if command -v mcp__plugin_serena_serena__activate_project &> /dev/null || [ -d ~/.claude/projects ]; then
+    # Detect git context for project naming
+    GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+    IS_WORKTREE=$(git rev-parse --git-common-dir 2>/dev/null | grep -q "^$(git rev-parse --git-dir)$" && echo "false" || echo "true")
+    
+    # Determine project path
+    # If in worktree, use worktree path as project
+    # If on branch, use branch-specific naming
+    if [ "$IS_WORKTREE" = "true" ]; then
+        PROJECT_PATH="$(pwd)"
+        PROJECT_NAME="$(basename "$(pwd)")-${GIT_BRANCH}"
+    else
+        PROJECT_PATH="$(pwd)"
+        PROJECT_NAME="$(basename "$(pwd)")"
+    fi
+    
+    echo "🔧 Initializing Serena..."
+    echo "   Project: ${PROJECT_NAME}"
+    echo "   Path: ${PROJECT_PATH}"
+    if [ "$IS_WORKTREE" = "true" ]; then
+        echo "   Worktree: yes"
+    fi
+    echo "   Branch: ${GIT_BRANCH}"
+    
+    # Activate Serena project (non-blocking if MCP not available)
+    # In actual execution, this would use the Serena MCP tool
+    # For now, we record the intent in config
+    SERENA_PROJECT="${PROJECT_PATH}"
+else
+    echo "⚠️  Serena MCP not detected. Skipping Serena initialization."
+    SERENA_PROJECT=""
+fi
+```
+
+**Note:** Serena activation happens via MCP tools during actual agent execution. This step collects the necessary context.
+
 ## 2. Brownfield Offer
 
 **If auto mode:** Skip to Step 4 (assume greenfield, synthesize PROJECT.md from provided document).
@@ -178,6 +220,14 @@ Create `.planning/config.json` with mode set to "yolo":
     "plan_check": true|false,
     "verifier": true|false,
     "auto_advance": true
+  },
+  "serena_integration": {
+    "enabled": true,
+    "project_path": "{project_path from Step 1.5}",
+    "project_name": "{project_name from Step 1.5}",
+    "is_worktree": {is_worktree from Step 1.5},
+    "branch": "{git_branch from Step 1.5}",
+    "auto_onboard": true
   }
 }
 ```
@@ -476,6 +526,14 @@ Create `.planning/config.json` with all settings:
     "research": true|false,
     "plan_check": true|false,
     "verifier": true|false
+  },
+  "serena_integration": {
+    "enabled": true,
+    "project_path": "{project_path from Step 1.5}",
+    "project_name": "{project_name from Step 1.5}",
+    "is_worktree": {is_worktree from Step 1.5},
+    "branch": "{git_branch from Step 1.5}",
+    "auto_onboard": true
   }
 }
 ```
@@ -1020,6 +1078,65 @@ Use AskUserQuestion:
 node ~/.claude/get-shit-done/bin/gsd-tools.cjs commit "docs: create roadmap ([N] phases)" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md
 ```
 
+## 8.5. Initialize Beads Tracking
+
+**Check if beads is available and initialize:**
+
+```bash
+# Check if beads command is available
+if ! command -v bd &> /dev/null; then
+  echo "⚠️ Beads (bd) not found. Skip beads initialization."
+  echo "   Install beads from: https://github.com/stevegeense/beads"
+else
+  # Initialize beads if not already present
+  if [ ! -d .beads ]; then
+    echo "📊 Initializing Beads tracking..."
+    bd init --quiet
+    
+    # Setup Claude hooks for automatic context injection
+    bd setup claude
+    
+    echo "✓ Beads initialized and hooks installed"
+  else
+    echo "✓ Beads already initialized"
+  fi
+  
+  # Create epic for each phase in the roadmap
+  echo "📊 Creating phase epics in Beads..."
+  
+  # Extract phase information from ROADMAP.md
+  grep "^### Phase [0-9]" .planning/ROADMAP.md | while read -r phase_line; do
+    # Extract phase number
+    PHASE_NUM=$(echo "$phase_line" | sed 's/### Phase \([0-9]*\).*/\1/')
+    PHASE_NAME=$(echo "$phase_line" | sed 's/### Phase [0-9]*: \(.*\) ---.*/\1/' | xargs)
+    
+    if [ -n "$PHASE_NUM" ]; then
+      # Create epic for this phase
+      EPIC_JSON=$(bd create "Epic: Phase ${PHASE_NUM} - ${PHASE_NAME}" \
+        -t epic \
+        -p 1 \
+        --label "phase-${PHASE_NUM}" \
+        --description="Phase ${PHASE_NUM}: $(grep -A 3 "^### Phase ${PHASE_NUM}" .planning/ROADMAP.md | head -4)" \
+        --json 2>/dev/null || echo "null")
+      
+      if [ "$EPIC_JSON" != "null" ]; then
+        EPIC_ID=$(echo "$EPIC_JSON" | jq -r '.id // empty')
+        if [ -n "$EPIC_ID" ]; then
+          echo "  ✓ Created epic: ${EPIC_ID} - Phase ${PHASE_NUM}"
+        fi
+      fi
+    fi
+  done
+  
+  echo "✓ Beads tracking initialized"
+  echo ""
+  echo "  Run 'bd ready' to see work queue"
+  echo "  Run 'bd prime' to see workflow context"
+fi
+```
+
+**Non-blocking:** If beads is not installed or commands fail, project initialization continues normally.
+
 ## 9. Done
 
 Present completion summary:
@@ -1038,6 +1155,7 @@ Present completion summary:
 | Research       | `.planning/research/`       |
 | Requirements   | `.planning/REQUIREMENTS.md` |
 | Roadmap        | `.planning/ROADMAP.md`      |
+| Serena         | `{branch/worktree}` (configured) |
 
 **[N] phases** | **[X] requirements** | Ready to build ✓
 ```
@@ -1089,6 +1207,14 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - `.planning/ROADMAP.md`
 - `.planning/STATE.md`
 
+**If Serena MCP is available:**
+- Git context detected (worktree/branch)
+- Serena project configured in config.json
+
+**If beads initialized:**
+- `.beads/` directory with issue database
+- Phase epics created in beads
+
 </output>
 
 <success_criteria>
@@ -1110,7 +1236,13 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - [ ] STATE.md initialized
 - [ ] REQUIREMENTS.md traceability updated
 - [ ] User knows next step is `/gsd:discuss-phase 1`
+- [ ] Serena project detected (worktree/branch) and configured in config.json
+- [ ] Beads initialized and epics created (if beads is available)
 
 **Atomic commits:** Each phase commits its artifacts immediately. If context is lost, artifacts persist.
+
+**Serena integration:** Git context (worktree/branch) detected and recorded in config.json for proper project activation.
+
+**Beads integration (optional):** If beads is available, phase epics are created for tracking work items.
 
 </success_criteria>

@@ -16,6 +16,41 @@ Your job: Execute the plan completely, commit each task, create SUMMARY.md, upda
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
 </role>
 
+<bead_tracking>
+## BEAD TRACKING PROTOCOL
+
+When Beads issue tracker is available, track your execution progress:
+
+**At plan start:**
+1. Check if the PLAN.md frontmatter contains `bead_id` field
+2. If found, verify bead status: `bd show {bead-id} --json`
+3. Update to in_progress: `bd update {bead-id} -s in_progress`
+
+**During execution:**
+- Add technical notes for future context: `bd comment add {bead-id} "Technical note..."`
+- Create discovered work items: `bd create "..." --deps discovered-from:{bead-id}`
+
+**When blocked:**
+```bash
+# Mark bead as blocked
+bd update {bead-id} -s blocked
+
+# Create blocking issue if needed
+BLOCKER_ID=$(bd create "Blocker: {blocking_reason}" -p 0 -t bug --json | jq -r '.id')
+bd dep add {bead-id} ${BLOCKER_ID}  # {bead-id} depends on ${BLOCKER_ID}
+```
+
+**At task completion:**
+- For each completed task, add comment: `bd comment add {bead-id} "Task {N} completed: {brief}"`
+- Document deviations: `bd comment add {bead-id} "Deviation: {description}"`
+
+**After plan completion:**
+- Close bead with outcome: `bd close {bead-id} --reason "Implemented X, tested Y"`
+- Verify parent epic progress: `bd show {epic-id} --json`
+
+**Non-blocking:** If beads command fails or is not available, continue execution normally.
+</bead_tracking>
+
 <project_context>
 Before executing, discover project context:
 
@@ -482,6 +517,7 @@ Plan execution complete when:
 - [ ] Each task committed individually with proper format
 - [ ] All deviations documented
 - [ ] Authentication gates handled and documented
+- [ ] Bead status updated during execution (if beads is available)
 - [ ] SUMMARY.md created with substantive content
 - [ ] STATE.md updated (position, decisions, issues, session)
 - [ ] ROADMAP.md updated with plan progress (via `roadmap update-plan-progress`)

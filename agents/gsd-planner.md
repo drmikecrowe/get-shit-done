@@ -371,6 +371,7 @@ files_modified: []          # Files this plan touches
 autonomous: true            # false if plan has checkpoints
 requirements: []            # REQUIRED — Requirement IDs from ROADMAP this plan addresses. MUST NOT be empty.
 user_setup: []              # Human-required setup (omit if empty)
+bead_id: bd-xxx             # Beads issue ID (added automatically if beads is initialized)
 
 must_haves:
   truths: []                # Observable behaviors
@@ -438,6 +439,7 @@ After completion, create `.planning/phases/XX-name/{phase}-{plan}-SUMMARY.md`
 | `requirements` | Yes | **MUST** list requirement IDs from ROADMAP. Every roadmap requirement ID MUST appear in at least one plan. |
 | `user_setup` | No | Human-required setup items |
 | `must_haves` | Yes | Goal-backward verification criteria |
+| `bead_id` | No | Beads issue ID for tracking (added automatically during plan creation) |
 
 Wave numbers are pre-computed during planning. Execute-phase reads `wave` directly from frontmatter.
 
@@ -1060,29 +1062,80 @@ Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 - Checkpoint/autonomous mismatch → update `autonomous: false`
 </step>
 
+<step name="create_beads_issues">
+For each plan created, create corresponding beads issues:
+
+**1. Find or create phase epic:**
+```bash
+# Check if beads is initialized
+if [ ! -d .beads ]; then
+  echo "⚠️ Beads not initialized. Run /gsd:new-project to initialize."
+  # Continue without beads - non-blocking
+else
+  # Find existing epic for this phase
+  EPIC_JSON=$(bd list -t epic --label "phase-${phase_number}" --json 2>/dev/null || echo "[]")
+  
+  if [ "$EPIC_JSON" = "[]" ]; then
+    # Create epic if it doesn't exist
+    EPIC_ID=$(bd create "Epic: Phase ${phase_number} - ${phase_name}" \
+      -t epic \
+      -p 1 \
+      --label "phase-${phase_number}" \
+      --description="Phase ${phase_number}: $(grep -A 5 "### Phase ${phase_number}:" .planning/ROADMAP.md | head -6)" \
+      --json 2>/dev/null | jq -r '.id // empty')
+  else
+    EPIC_ID=$(echo "$EPIC_JSON" | jq -r '.[0].id')
+  fi
+fi
+```
+
+**2. For each PLAN.md created:**
+```bash
+if [ -n "$EPIC_ID" ]; then
+  # Extract plan objective for bead title
+  PLAN_TITLE=$(grep -A 3 "<objective>" "$PLAN_PATH" | head -4 | tail -1 | sed 's/^[[:space:]]*//')
+  
+  # Create bead for the plan
+  BEAD_ID=$(bd create "Plan: ${phase}-${plan_number} - ${PLAN_TITLE}" \
+    --parent "$EPIC_ID" \
+    -t task \
+    -p 1 \
+    --description="Plan file: $PLAN_PATH\n\n$(grep -A 10 "<objective>" "$PLAN_PATH" | head -11)" \
+    --json 2>/dev/null | jq -r '.id // empty')
+  
+  if [ -n "$BEAD_ID" ]; then
+    # Add bead_id to plan frontmatter
+    sed -i "/^---$/a bead_id: ${BEAD_ID}" "$PLAN_PATH"
+  fi
+fi
+```
+
+**3. For each task within plans (optional, for fine-grained tracking):**
+```bash
+if [ -n "$BEAD_ID" ] && [ -n "$EPIC_ID" ]; then
+  # Extract task information and create child beads
+  grep -A 5 "<task type=" "$PLAN_PATH" | while read -r task_line; do
+    TASK_TITLE=$(echo "$task_line" | grep "<name>" | sed 's/<name>//' | sed 's/<\/name>//' | xargs)
+    if [ -n "$TASK_TITLE" ]; then
+      bd create "$TASK_TITLE" \
+        --parent "$BEAD_ID" \
+        -t task \
+        -p 1 \
+        --json 2>/dev/null
+    fi
+  done
+fi
+```
+
+**Note:** Beads integration is non-blocking. If beads is not available or commands fail, planning continues normally.
+</step>
+
 <step name="update_roadmap">
 Update ROADMAP.md to finalize phase placeholders:
 
 1. Read `.planning/ROADMAP.md`
 2. Find phase entry (`### Phase {N}:`)
 3. Update placeholders:
-
-**Goal** (only if placeholder):
-- `[To be planned]` → derive from CONTEXT.md > RESEARCH.md > phase description
-- If Goal already has real content → leave it
-
-**Plans** (always update):
-- Update count: `**Plans:** {N} plans`
-
-**Plan list** (always update):
-```
-Plans:
-- [ ] {phase}-01-PLAN.md — {brief objective}
-- [ ] {phase}-02-PLAN.md — {brief objective}
-```
-
-4. Write updated ROADMAP.md
-</step>
 
 <step name="git_commit">
 ```bash
@@ -1125,6 +1178,24 @@ Return structured planning outcome to orchestrator.
 Execute: `/gsd:execute-phase {phase}`
 
 <sub>`/clear` first - fresh context window</sub>
+
+### Beads Issues Created
+
+{If beads is available and commands succeeded:}
+
+**Phase Epic:** {epic-id} — "Epic: Phase {N} - {name}"
+
+**Plan Beads Created:**
+
+| Plan | Bead ID | Title |
+|------|---------|-------|
+| {phase}-01 | {bead-id-1} | {title} |
+| {phase}-02 | {bead-id-2} | {title} |
+
+**Ready Work Queue:**
+```bash
+bd ready --json | jq -r '.[] | "\(.id): \(.title)"'
+```
 ```
 
 ## Gap Closure Plans Created
@@ -1170,6 +1241,7 @@ Phase planning complete when:
 - [ ] Each task: Type, Files (if auto), Action, Verify, Done
 - [ ] Checkpoints properly structured
 - [ ] Wave structure maximizes parallelism
+- [ ] Beads issues created (if beads is initialized)
 - [ ] PLAN file(s) committed to git
 - [ ] User knows next steps and wave structure
 
