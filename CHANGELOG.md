@@ -6,6 +6,138 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.22.4] - 2026-03-03
+
+### Added
+- `--discuss` flag for `/gsd:quick` — lightweight pre-planning discussion to gather context before quick tasks
+
+### Fixed
+- Windows: `@file:` protocol resolution for large init payloads (>50KB) — all 32 workflow/agent files now resolve temp file paths instead of letting agents hallucinate `/tmp` paths (#841)
+- Missing `skills` frontmatter on gsd-nyquist-auditor agent
+
+## [1.22.3] - 2026-03-03
+
+### Added
+- Verify-work auto-injects a cold-start smoke test for phases that modify server, database, seed, or startup files — catches warm-state blind spots
+
+### Changed
+- Renamed `depth` setting to `granularity` with values `coarse`/`standard`/`fine` to accurately reflect what it controls (phase count, not investigation depth). Backward-compatible migration auto-renames existing config.
+
+### Fixed
+- Installer now replaces `$HOME/.claude/` paths (not just `~/.claude/`) for non-Claude runtimes — fixes broken commands on local installs and Gemini/OpenCode/Codex installs (#905, #909)
+
+## [1.22.2] - 2026-03-03
+
+### Fixed
+- Codex installer no longer creates duplicate `[features]` and `[agents]` sections on re-install (#902, #882)
+- Context monitor hook is advisory instead of blocking non-GSD workflows
+- Hooks respect `CLAUDE_CONFIG_DIR` for custom config directories
+- Hooks include stdin timeout guard to prevent hanging on pipe errors
+- Statusline context scaling matches autocompact buffer thresholds
+- Gap closure plans compute wave numbers instead of hardcoding wave 1
+- `auto_advance` config flag no longer persists across sessions
+- Phase-complete scans ROADMAP.md as fallback for next-phase detection
+- `getMilestoneInfo()` prefers in-progress milestone marker instead of always returning first
+- State parsing supports both bold and plain field formats
+- Phase counting scoped to current milestone
+- Total phases derived from ROADMAP when phase directories don't exist yet
+- OpenCode detects runtime config directory instead of hardcoding `.claude`
+- Gemini hooks use `AfterTool` event instead of `PostToolUse`
+- Multi-word commit messages preserved in CLI router
+- Regex patterns in milestone/state helpers properly escaped
+- `isGitIgnored` uses `--no-index` for tracked file detection
+- AskUserQuestion freeform answer loop properly breaks on valid input
+- Agent spawn types standardized across all workflows
+
+### Changed
+- Anti-heredoc instruction extended to all file-writing agents
+- Agent definitions include skills frontmatter and hooks examples
+
+### Chores
+- Removed leftover `new-project.md.bak` file
+- Deduplicated `extractField` and phase filter helpers into shared modules
+- Added 47 agent frontmatter and spawn consistency tests
+
+## [1.22.1] - 2026-03-02
+
+### Added
+- Discuss phase now loads prior context (PROJECT.md, REQUIREMENTS.md, STATE.md, and all prior CONTEXT.md files) before identifying gray areas — prevents re-asking questions you've already answered in earlier phases
+
+### Fixed
+- Shell snippets in workflows use `printf` instead of `echo` to prevent jq parse errors with special characters
+
+## [1.22.0] - 2026-02-27
+
+### Added
+- Codex multi-agent support: `request_user_input` mapping, multi-agent config, and agent role generation for Codex runtime
+- Analysis paralysis guard in agents to prevent over-deliberation during planning
+- Exhaustive cross-check and task-level TDD patterns in agent workflows
+- Code-aware discuss phase with codebase scouting — `/gsd:discuss-phase` now analyzes relevant source files before asking questions
+
+### Fixed
+- Update checker clears both cache paths to prevent stale version notifications
+- Statusline migration regex no longer clobbers third-party statuslines
+- Subagent paths use `$HOME` instead of `~` to prevent `MODULE_NOT_FOUND` errors
+- Skill discovery supports both `.claude/skills/` and `.agents/skills/` paths
+- `resolve-model` variable names aligned with template placeholders
+- Regex metacharacters properly escaped in `stateExtractField`
+- `model_overrides` and `nyquist_validation` correctly loaded from config
+- `phase-plan-index` no longer returns null/empty for `files_modified`, `objective`, and `task_count`
+
+## [1.21.1] - 2026-02-27
+
+### Added
+- Comprehensive test suite: 428 tests across 13 test files covering core, commands, config, dispatcher, frontmatter, init, milestone, phase, roadmap, state, and verify modules
+- CI pipeline with GitHub Actions: 9-matrix (3 OS × 3 Node versions), c8 coverage enforcement at 70% line threshold
+- Cross-platform test runner (`scripts/run-tests.cjs`) for Windows compatibility
+
+### Fixed
+- `getMilestoneInfo()` returns wrong version when shipped milestones are collapsed in `<details>` blocks
+- Milestone completion stats and archive now scoped to current milestone phases only (previously counted all phases on disk including prior milestones)
+- MILESTONES.md entries now insert in reverse chronological order (newest first)
+- Cross-platform path separators: all user-facing file paths use forward slashes on Windows
+- JSON quoting and dollar sign handling in CLI arguments on Windows
+- `model_overrides` loaded from config and `resolveModelInternal` used in CLI
+
+## [1.21.0] - 2026-02-25
+
+### Added
+- YAML frontmatter sync to STATE.md for machine-readable status tracking
+- `/gsd:add-tests` command for post-phase test generation
+- Codex runtime support with skills-first installation
+- Standard `project_context` block in gsd-verifier output
+- Codex changelog and usage documentation
+
+### Changed
+- Improved onboarding UX: installer now suggests `/gsd:new-project` instead of `/gsd:help`
+- Updated Discord invite to vanity URL (discord.gg/gsd)
+- Compressed Nyquist validation layer to align with GSD meta-prompt conventions
+- Requirements propagation now includes `phase_req_ids` from ROADMAP to workflow agents
+- Debug sessions require human verification before resolution
+
+### Fixed
+- Multi-level decimal phase handling (e.g., 72.1.1) with proper regex escaping
+- `/gsd:update` always installs latest package version
+- STATE.md decision corruption and dollar sign handling
+- STATE.md frontmatter mapping for requirements-completed status
+- Progress bar percent clamping to prevent RangeError crashes
+- `--cwd` override support in state-snapshot command
+
+## [1.20.6] - 2025-02-23
+
+### Added
+- Context window monitor hook with WARNING/CRITICAL alerts when agent context usage exceeds thresholds
+- Nyquist validation layer in plan-phase pipeline to catch quality issues before execution
+- Option highlighting and gray area looping in discuss-phase for clearer preference capture
+
+### Changed
+- Refactored installer tools into 11 domain modules for maintainability
+
+### Fixed
+- Auto-advance chain no longer breaks when skills fail to resolve inside Task subagents
+- Gemini CLI workflows and templates no longer incorrectly convert to TOML format
+- Universal phase number parsing handles all formats consistently (decimal phases, plain numbers)
+
 ## [1.20.5] - 2026-02-19
 
 ### Fixed
@@ -1319,7 +1451,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - YOLO mode for autonomous execution
 - Interactive mode with checkpoints
 
-[Unreleased]: https://github.com/glittercowboy/get-shit-done/compare/v1.20.5...HEAD
+[Unreleased]: https://github.com/glittercowboy/get-shit-done/compare/v1.22.4...HEAD
+[1.22.4]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.22.4
+[1.22.3]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.22.3
+[1.22.2]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.22.2
+[1.22.1]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.22.1
+[1.22.0]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.22.0
+[1.21.1]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.21.1
+[1.21.0]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.21.0
+[1.20.6]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.20.6
 [1.20.5]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.20.5
 [1.20.4]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.20.4
 [1.20.3]: https://github.com/glittercowboy/get-shit-done/releases/tag/v1.20.3
