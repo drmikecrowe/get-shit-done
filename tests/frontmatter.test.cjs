@@ -9,7 +9,7 @@
  */
 
 const { test, describe } = require('node:test');
-const assert = require('node:assert');
+const assert = require('node:assert/strict');
 
 const {
   extractFrontmatter,
@@ -54,21 +54,22 @@ describe('extractFrontmatter', () => {
     assert.deepStrictEqual(result.key, ['a', 'b', 'c']);
   });
 
-  test('handles quoted commas in inline arrays — REG-04 known limitation', () => {
-    // REG-04: The split(',') on line 53 does NOT respect quotes.
-    // The parser WILL split on commas inside quotes, producing wrong results.
-    // This test documents the CURRENT (buggy) behavior.
+  test('handles quoted commas in inline arrays — REG-04 fixed', () => {
     const content = '---\nkey: ["a, b", c]\n---\n';
     const result = extractFrontmatter(content);
-    // Current behavior: splits on ALL commas, producing 3 items instead of 2
-    // Expected correct behavior would be: ["a, b", "c"]
-    // Actual current behavior: ["a", "b", "c"] (split ignores quotes)
-    assert.ok(Array.isArray(result.key), 'should produce an array');
-    assert.ok(result.key.length >= 2, 'should produce at least 2 items from comma split');
-    // The bug produces ["a", "b\"", "c"] or similar — the exact output depends on
-    // how the regex strips quotes after the split.
-    // We verify the key insight: the result has MORE items than intended (known limitation).
-    assert.ok(result.key.length > 2, 'REG-04: split produces more items than intended due to quoted comma bug');
+    assert.deepStrictEqual(result.key, ['a, b', 'c']);
+  });
+
+  test('handles single-quoted commas in inline arrays', () => {
+    const content = "---\nkey: ['x, y', z]\n---\n";
+    const result = extractFrontmatter(content);
+    assert.deepStrictEqual(result.key, ['x, y', 'z']);
+  });
+
+  test('handles mixed quotes in inline arrays', () => {
+    const content = '---\nkey: ["a, b", \'c, d\', e]\n---\n';
+    const result = extractFrontmatter(content);
+    assert.deepStrictEqual(result.key, ['a, b', 'c, d', 'e']);
   });
 
   test('returns empty object for no frontmatter', () => {
@@ -111,6 +112,104 @@ describe('extractFrontmatter', () => {
     assert.strictEqual(result.first, 'one');
     assert.strictEqual(result.second, 'two');
     assert.strictEqual(result.third, 'three');
+  });
+
+  // ─── Bug #2130: body --- sequence mis-parse ──────────────────────────────
+
+  test('#2130: frontmatter at top with YAML example block in body — returns top frontmatter', () => {
+    const content = [
+      '---',
+      'name: my-agent',
+      'type: execute',
+      '---',
+      '',
+      '# Documentation',
+      '',
+      'Here is a YAML example:',
+      '',
+      '```yaml',
+      '---',
+      'key: value',
+      'other: stuff',
+      '---',
+      '```',
+      '',
+      'End of doc.',
+    ].join('\n');
+    const result = extractFrontmatter(content);
+    assert.strictEqual(result.name, 'my-agent', 'should extract name from TOP frontmatter');
+    assert.strictEqual(result.type, 'execute', 'should extract type from TOP frontmatter');
+    assert.strictEqual(result.key, undefined, 'should NOT extract key from body YAML block');
+    assert.strictEqual(result.other, undefined, 'should NOT extract other from body YAML block');
+  });
+
+  test('#2130: frontmatter at top with horizontal rules in body — returns top frontmatter', () => {
+    const content = [
+      '---',
+      'title: My Doc',
+      'status: active',
+      '---',
+      '',
+      '# Section One',
+      '',
+      'Some text.',
+      '',
+      '---',
+      '',
+      '# Section Two',
+      '',
+      'More text.',
+      '',
+      '---',
+      '',
+      '# Section Three',
+    ].join('\n');
+    const result = extractFrontmatter(content);
+    assert.strictEqual(result.title, 'My Doc', 'should extract title from TOP frontmatter');
+    assert.strictEqual(result.status, 'active', 'should extract status from TOP frontmatter');
+  });
+
+  test('#2130: body-only --- block with no frontmatter at byte 0 — returns empty', () => {
+    const content = [
+      '# My Document',
+      '',
+      'Some intro text.',
+      '',
+      '---',
+      'key: value',
+      'other: stuff',
+      '---',
+      '',
+      'End of doc.',
+    ].join('\n');
+    const result = extractFrontmatter(content);
+    assert.deepStrictEqual(result, {}, 'should return empty object when --- block is not at byte 0');
+  });
+
+  test('#2130: valid frontmatter at byte 0 still works (regression guard)', () => {
+    const content = [
+      '---',
+      'phase: 01',
+      'plan: 03',
+      'type: execute',
+      'wave: 1',
+      'depends_on: ["01-01", "01-02"]',
+      'files_modified:',
+      '  - src/auth.ts',
+      '  - src/middleware.ts',
+      'autonomous: true',
+      '---',
+      '',
+      '# Plan body here',
+    ].join('\n');
+    const result = extractFrontmatter(content);
+    assert.strictEqual(result.phase, '01');
+    assert.strictEqual(result.plan, '03');
+    assert.strictEqual(result.type, 'execute');
+    assert.strictEqual(result.wave, '1');
+    assert.deepStrictEqual(result.depends_on, ['01-01', '01-02']);
+    assert.deepStrictEqual(result.files_modified, ['src/auth.ts', 'src/middleware.ts']);
+    assert.strictEqual(result.autonomous, 'true');
   });
 });
 
@@ -328,6 +427,89 @@ must_haves:
     const content = 'Plain text without any frontmatter delimiters.';
     const result = parseMustHavesBlock(content, 'truths');
     assert.deepStrictEqual(result, []);
+  });
+
+  test('parses key_links with 2-space indentation — issue #1356', () => {
+    // Real-world YAML uses 2-space indentation, not 4-space.
+    // The parser was hardcoded to expect 4-space indentation which caused
+    // "No must_haves.key_links found in frontmatter" for valid YAML.
+    const content = `---
+phase: 01-conversion-engine-iva-correctness
+plan: 02
+type: execute
+wave: 2
+depends_on: ["01-01"]
+files_modified:
+  - src/features/currency/exchange-rate-store.ts
+  - src/features/currency/use-currency-config.ts
+autonomous: true
+requirements:
+  - CONV-02
+  - CONV-03
+
+must_haves:
+  truths:
+    - "All tests pass"
+  artifacts:
+    - path: "src/features/currency/use-currency-config.ts"
+  key_links:
+    - from: "src/features/currency/use-currency-config.ts"
+      to: "src/api/generated/company-config/company-config.ts"
+      via: "getCompanyConfigControllerFindAllQueryOptions"
+      pattern: "getCompanyConfigControllerFindAllQueryOptions"
+    - from: "src/features/currency/use-currency-config.ts"
+      to: "src/features/currency/exchange-rate-store.ts"
+      via: "useExchangeRateStore for MMKV persist"
+      pattern: "useExchangeRateStore"
+---
+
+# Plan body
+`;
+    const result = parseMustHavesBlock(content, 'key_links');
+    assert.ok(Array.isArray(result), 'should return an array');
+    assert.strictEqual(result.length, 2, `expected 2 key_links, got ${result.length}: ${JSON.stringify(result)}`);
+    assert.strictEqual(result[0].from, 'src/features/currency/use-currency-config.ts');
+    assert.strictEqual(result[0].to, 'src/api/generated/company-config/company-config.ts');
+    assert.strictEqual(result[0].via, 'getCompanyConfigControllerFindAllQueryOptions');
+    assert.strictEqual(result[0].pattern, 'getCompanyConfigControllerFindAllQueryOptions');
+    assert.strictEqual(result[1].from, 'src/features/currency/use-currency-config.ts');
+    assert.strictEqual(result[1].to, 'src/features/currency/exchange-rate-store.ts');
+    assert.strictEqual(result[1].via, 'useExchangeRateStore for MMKV persist');
+    assert.strictEqual(result[1].pattern, 'useExchangeRateStore');
+  });
+
+  test('parses truths with 2-space indentation — issue #1356', () => {
+    const content = `---
+phase: 01
+must_haves:
+  truths:
+    - "All tests pass on CI"
+    - "Coverage exceeds 80%"
+---
+`;
+    const result = parseMustHavesBlock(content, 'truths');
+    assert.ok(Array.isArray(result), 'should return an array');
+    assert.strictEqual(result.length, 2);
+    assert.strictEqual(result[0], 'All tests pass on CI');
+    assert.strictEqual(result[1], 'Coverage exceeds 80%');
+  });
+
+  test('parses artifacts with 2-space indentation — issue #1356', () => {
+    const content = `---
+phase: 01
+must_haves:
+  artifacts:
+    - path: "src/auth.ts"
+      provides: "JWT authentication"
+      min_lines: 100
+---
+`;
+    const result = parseMustHavesBlock(content, 'artifacts');
+    assert.ok(Array.isArray(result), 'should return an array');
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].path, 'src/auth.ts');
+    assert.strictEqual(result[0].provides, 'JWT authentication');
+    assert.strictEqual(result[0].min_lines, 100);
   });
 
   test('handles nested arrays within artifact objects', () => {

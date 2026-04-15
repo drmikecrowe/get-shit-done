@@ -9,7 +9,7 @@
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
-const assert = require('node:assert');
+const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
@@ -134,6 +134,12 @@ describe('dispatcher error paths', () => {
     const result = runGsdTools('todo bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
     assert.ok(result.error.includes('Unknown todo subcommand'), `Expected "Unknown todo subcommand" in stderr, got: ${result.error}`);
+  });
+
+  test('uat unknown subcommand errors', () => {
+    const result = runGsdTools('uat bogus', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    assert.ok(result.error.includes('Unknown uat subcommand'), `Expected "Unknown uat subcommand" in stderr, got: ${result.error}`);
   });
 
   // Unknown subcommand: init
