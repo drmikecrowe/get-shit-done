@@ -133,37 +133,45 @@ fi
 ```
 </step>
 
-<step name="check_beads_status">
-**Check bead status for current phase (if beads is initialized):**
+<step name="check_beads_status" priority="required">
+**REQUIRED GATE — Run this bash block now. Do not skip, defer, or treat as advisory.**
+
+If `bd` is available and `.beads/` exists, you MUST execute this block before proceeding to wave execution.
 
 ```bash
-# Only proceed if beads is available
+# REQUIRED: run this block — not optional narrative
 if command -v bd &> /dev/null && [ -d .beads ]; then
-    # Get ready work for current phase
-    PHASE_BEADS=$(bd list -t task --label "phase-${phase_number}" --status ready --json 2>/dev/null || echo "[]")
-    
+    BEADS_AVAILABLE=true
+
+    # List ready work for this phase
+    PHASE_BEADS=$(bd list -t task --label "phase-${PHASE_NUMBER}" --status ready --json 2>/dev/null || echo "[]")
+
     if [ "$PHASE_BEADS" != "[]" ]; then
-        echo ""
-        echo "📊 Beads: Ready work in phase ${phase_number}"
-        echo "$PHASE_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"' | head -5
-        echo ""
+        echo "📊 Beads: Ready work in phase ${PHASE_NUMBER}"
+        echo "$PHASE_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"' | head -10
     fi
-    
-    # Check for blocked beads
-    BLOCKED_BEADS=$(bd list -t task --label "phase-${phase_number}" --status blocked --json 2>/dev/null || echo "[]")
-    
+
+    # HARD GATE: blocked beads must be acknowledged before continuing
+    BLOCKED_BEADS=$(bd list -t task --label "phase-${PHASE_NUMBER}" --status blocked --json 2>/dev/null || echo "[]")
+
     if [ "$BLOCKED_BEADS" != "[]" ]; then
-        echo "⚠️  WARNING: Blocked work in phase ${phase_number}"
-        echo "$BLOCKED_BEADS" | jq -r '.[] | "  • \(.id): \(.title) - \(.status)"'
         echo ""
-        echo "Blocked items must be resolved before continuing."
-        echo "Run 'bd show {bead-id}' to see blocker details."
+        echo "⛔  BLOCKED WORK IN PHASE ${PHASE_NUMBER} — CANNOT PROCEED"
+        echo "$BLOCKED_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"'
         echo ""
+        echo "Each blocker must be resolved or explicitly overridden before execution continues."
+        echo "Run 'bd show <bead-id>' to see blocker details."
+        echo "Override: 'bd update <bead-id> -s ready' to unblock."
+        BEADS_BLOCKED=true
     fi
+else
+    BEADS_AVAILABLE=false
 fi
 ```
 
-**Non-blocking:** Continue execution even if beads check fails or shows blockers.
+**If `BEADS_BLOCKED=true`:** STOP — present the blocked bead list to the user. Do NOT proceed to `handle_branching`. Wait for user to resolve blockers or explicitly type "override blockers" to continue anyway.
+
+**If `BEADS_AVAILABLE=false`:** Proceed normally — beads not installed.
 </step>
 
 <step name="check_blocking_antipatterns" priority="first">
@@ -450,15 +458,19 @@ Execute each selected wave in sequence. Within a wave: parallel if `PARALLELIZAT
    # → simultaneous git worktree add → .git/config.lock contention → failures
    ```
 
-   **Before spawning each agent:** Update bead status to in_progress (if beads is available):
+   **REQUIRED — Before spawning each agent:** Execute this bash block. This is a mandatory step, not optional narrative. If `BEADS_AVAILABLE=true` (set during `check_beads_status`), failure to run this block leaves beads in stale `ready` state.
    ```bash
-   if command -v bd &> /dev/null && [ -d .beads ]; then
-       # Find bead for this plan
+   # REQUIRED: mark bead in_progress BEFORE spawning executor
+   if [ "${BEADS_AVAILABLE:-false}" = "true" ]; then
        PLAN_FILE="{plan_file}"
        BEAD_ID=$(grep -Po '^bead_id: \K.*' "{phase_dir}/${PLAN_FILE}" 2>/dev/null || echo "")
-       
+
        if [ -n "$BEAD_ID" ]; then
-           bd update "$BEAD_ID" --status in_progress --quiet 2>/dev/null
+           bd update "$BEAD_ID" --status in_progress 2>/dev/null \
+             && echo "📊 Bead ${BEAD_ID} → in_progress" \
+             || echo "⚠ Failed to update bead ${BEAD_ID} — continuing anyway"
+       else
+           echo "ℹ No bead_id in ${PLAN_FILE} frontmatter — skipping bead update"
        fi
    fi
    ```
@@ -840,16 +852,20 @@ Execute each selected wave in sequence. Within a wave: parallel if `PARALLELIZAT
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
    If pass:
-   
-   **Update bead status to closed (if beads is available):**
+
+   **REQUIRED — Close bead for each completed plan.** Execute this bash block now. This is mandatory, not optional. Skipping leaves beads permanently stuck in `in_progress`.
    ```bash
-   if command -v bd &> /dev/null && [ -d .beads ]; then
-       # Find bead for this plan
+   # REQUIRED: close bead AFTER spot-checks pass
+   if [ "${BEADS_AVAILABLE:-false}" = "true" ]; then
        PLAN_FILE="{plan_file}"
        BEAD_ID=$(grep -Po '^bead_id: \K.*' "{phase_dir}/${PLAN_FILE}" 2>/dev/null || echo "")
-       
+
        if [ -n "$BEAD_ID" ]; then
-           bd close "$BEAD_ID" --reason "Completed: {what was built from SUMMARY}" --quiet 2>/dev/null
+           # Extract one-liner from SUMMARY for closure reason
+           ONELINER=$(grep "^## " "{phase_dir}/{plan_number}-{plan_padded}-SUMMARY.md" 2>/dev/null | head -1 | sed 's/^## //')
+           bd close "$BEAD_ID" --reason "Completed: ${ONELINER:-plan execution}" 2>/dev/null \
+             && echo "📊 Bead ${BEAD_ID} → closed" \
+             || echo "⚠ Failed to close bead ${BEAD_ID} — update manually: bd close ${BEAD_ID}"
        fi
    fi
    ```

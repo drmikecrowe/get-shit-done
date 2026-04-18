@@ -4768,7 +4768,7 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 4. Remove GSD hooks
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-context-monitor.js', 'gsd-prompt-guard.js', 'gsd-read-guard.js', 'gsd-read-injection-scanner.js', 'gsd-workflow-guard.js', 'gsd-session-state.sh', 'gsd-validate-commit.sh', 'gsd-phase-boundary.sh'];
+    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-context-monitor.js', 'gsd-prompt-guard.js', 'gsd-read-guard.js', 'gsd-read-injection-scanner.js', 'gsd-workflow-guard.js', 'gsd-session-state.sh', 'gsd-validate-commit.sh', 'gsd-phase-boundary.sh', 'gsd-beads-open.sh', 'gsd-beads-close.sh'];
     let hookCount = 0;
     for (const hook of gsdHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -5850,7 +5850,7 @@ function install(isGlobal, runtime = 'claude') {
       if (verifyInstalled(hooksDest, 'hooks')) {
         console.log(`  ${green}✓${reset} Installed hooks (bundled)`);
         // Warn if expected community .sh hooks are missing (non-fatal)
-        const expectedShHooks = ['gsd-session-state.sh', 'gsd-validate-commit.sh', 'gsd-phase-boundary.sh'];
+        const expectedShHooks = ['gsd-session-state.sh', 'gsd-validate-commit.sh', 'gsd-phase-boundary.sh', 'gsd-beads-open.sh', 'gsd-beads-close.sh'];
         for (const sh of expectedShHooks) {
           if (!fs.existsSync(path.join(hooksDest, sh))) {
             console.warn(`  ${yellow}⚠${reset}  Missing expected hook: ${sh}`);
@@ -6352,6 +6352,54 @@ function install(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Configured phase boundary detection hook (opt-in via config)`);
     } else if (!hasPhaseBoundaryHook && !fs.existsSync(phaseBoundaryFile)) {
       console.warn(`  ${yellow}⚠${reset}  Skipped phase boundary hook — gsd-phase-boundary.sh not found at target`);
+    }
+
+    // Configure beads-open hook (PreToolUse on Agent|Task — marks bead in_progress before spawn)
+    const beadsOpenCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-beads-open.sh')
+      : 'bash ' + localPrefix + '/hooks/gsd-beads-open.sh';
+    const hasBeadsOpenHook = settings.hooks[preToolEvent].some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-beads-open'))
+    );
+    const beadsOpenFile = path.join(targetDir, 'hooks', 'gsd-beads-open.sh');
+    if (!hasBeadsOpenHook && fs.existsSync(beadsOpenFile)) {
+      settings.hooks[preToolEvent].push({
+        matcher: 'Agent|Task',
+        hooks: [
+          {
+            type: 'command',
+            command: beadsOpenCommand,
+            timeout: 10
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured beads-open hook (marks bead in_progress before agent spawn)`);
+    } else if (!hasBeadsOpenHook && !fs.existsSync(beadsOpenFile)) {
+      console.warn(`  ${yellow}⚠${reset}  Skipped beads-open hook — gsd-beads-open.sh not found at target`);
+    }
+
+    // Configure beads-close hook (PostToolUse on Agent|Task — closes bead after plan completes)
+    const beadsCloseCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-beads-close.sh')
+      : 'bash ' + localPrefix + '/hooks/gsd-beads-close.sh';
+    const hasBeadsCloseHook = settings.hooks[postToolEvent].some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-beads-close'))
+    );
+    const beadsCloseFile = path.join(targetDir, 'hooks', 'gsd-beads-close.sh');
+    if (!hasBeadsCloseHook && fs.existsSync(beadsCloseFile)) {
+      settings.hooks[postToolEvent].push({
+        matcher: 'Agent|Task',
+        hooks: [
+          {
+            type: 'command',
+            command: beadsCloseCommand,
+            timeout: 10
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured beads-close hook (closes bead after plan completes)`);
+    } else if (!hasBeadsCloseHook && !fs.existsSync(beadsCloseFile)) {
+      console.warn(`  ${yellow}⚠${reset}  Skipped beads-close hook — gsd-beads-close.sh not found at target`);
     }
   }
 

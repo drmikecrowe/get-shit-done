@@ -22,38 +22,68 @@ Your job: Execute the plan completely, commit each task, create SUMMARY.md, upda
 </role>
 
 <bead_tracking>
-## BEAD TRACKING PROTOCOL
+## BEAD TRACKING PROTOCOL — MANDATORY WHEN bead_id EXISTS
 
-When Beads issue tracker is available, track your execution progress:
-
-**At plan start:**
-1. Check if the PLAN.md frontmatter contains `bead_id` field
-2. If found, verify bead status: `bd show {bead-id} --json`
-3. Update to in_progress: `bd update {bead-id} -s in_progress`
-
-**During execution:**
-- Add technical notes for future context: `bd comment add {bead-id} "Technical note..."`
-- Create discovered work items: `bd create "..." --deps discovered-from:{bead-id}`
-
-**When blocked:**
+**Entry check — run this first:**
 ```bash
-# Mark bead as blocked
-bd update {bead-id} -s blocked
-
-# Create blocking issue if needed
-BLOCKER_ID=$(bd create "Blocker: {blocking_reason}" -p 0 -t bug --json | jq -r '.id')
-bd dep add {bead-id} ${BLOCKER_ID}  # {bead-id} depends on ${BLOCKER_ID}
+BEADS_AVAILABLE=false
+BEAD_ID=""
+if command -v bd &> /dev/null && [ -d .beads ]; then
+    BEADS_AVAILABLE=true
+    BEAD_ID=$(grep -Po '^bead_id: \K.*' "{plan_path}" 2>/dev/null || echo "")
+fi
 ```
 
-**At task completion:**
-- For each completed task, add comment: `bd comment add {bead-id} "Task {N} completed: {brief}"`
-- Document deviations: `bd comment add {bead-id} "Deviation: {description}"`
+If `BEADS_AVAILABLE=false` OR `BEAD_ID` is empty: skip all bead steps below — beads not configured.
 
-**After plan completion:**
-- Close bead with outcome: `bd close {bead-id} --reason "Implemented X, tested Y"`
-- Verify parent epic progress: `bd show {epic-id} --json`
+If `BEADS_AVAILABLE=true` AND `BEAD_ID` is set: **all steps below are MANDATORY**, not advisory.
 
-**Non-blocking:** If beads command fails or is not available, continue execution normally.
+---
+
+**STEP 1 — Plan start (REQUIRED):**
+```bash
+# REQUIRED: execute this block — do not skip
+BEAD_STATUS=$(bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.status // "unknown"')
+if [ "$BEAD_STATUS" = "blocked" ]; then
+    echo "⛔  HARD GATE: bead ${BEAD_ID} is blocked — STOP"
+    bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.blockers[]? | "  • \(.description)"'
+    echo "Resolve blocker before proceeding, or: bd update ${BEAD_ID} -s in_progress"
+    exit 1  # halt — do not execute tasks on a blocked bead
+fi
+bd update "$BEAD_ID" -s in_progress 2>/dev/null \
+  && echo "📊 Bead ${BEAD_ID} → in_progress" \
+  || echo "⚠ Bead update failed — continuing"
+```
+
+**STEP 2 — During execution (run these, not just read them):**
+```bash
+# After each task completes:
+bd comment add "$BEAD_ID" "Task {N} completed: {one-line summary}" 2>/dev/null || true
+
+# If deviation found:
+bd comment add "$BEAD_ID" "Deviation: {description} — auto-fixed" 2>/dev/null || true
+
+# If new work discovered:
+bd create "{work title}" --deps "discovered-from:${BEAD_ID}" -t task 2>/dev/null || true
+```
+
+**STEP 3 — When blocked during execution (REQUIRED):**
+```bash
+# REQUIRED: mark bead blocked — do not just log a deviation
+bd update "$BEAD_ID" -s blocked 2>/dev/null || true
+BLOCKER_ID=$(bd create "Blocker: {reason}" -p 0 -t bug --json 2>/dev/null | jq -r '.id // empty')
+[ -n "$BLOCKER_ID" ] && bd dep add "$BEAD_ID" "$BLOCKER_ID" 2>/dev/null || true
+```
+
+**STEP 4 — Plan complete (REQUIRED):**
+```bash
+# REQUIRED: close bead — do not skip
+bd close "$BEAD_ID" --reason "Implemented {X}, tested {Y}" 2>/dev/null \
+  && echo "📊 Bead ${BEAD_ID} → closed" \
+  || echo "⚠ Failed to close bead ${BEAD_ID} — run manually: bd close ${BEAD_ID}"
+```
+
+**Failure fallback:** If `bd` command errors, log it and continue — do not abort execution. But DO attempt each step. "Non-blocking" means failure is tolerated, not that the attempt is optional.
 </bead_tracking>
 
 <documentation_lookup>

@@ -25,7 +25,10 @@ const HOOKS_TO_COPY = [
   // Community hooks (bash, opt-in via .planning/config.json hooks.community)
   'gsd-session-state.sh',
   'gsd-validate-commit.sh',
-  'gsd-phase-boundary.sh'
+  'gsd-phase-boundary.sh',
+  // Beads bridge hooks (automatic bead status sync during GSD execution)
+  'gsd-beads-open.sh',
+  'gsd-beads-close.sh'
 ];
 
 /**

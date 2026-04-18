@@ -1116,71 +1116,74 @@ Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 </step>
 
 <step name="create_beads_issues">
-For each plan created, create corresponding beads issues:
+**REQUIRED when `.beads/` exists — execute these bash blocks, do not just read them.**
+
+If beads is not initialized (`[ ! -d .beads ]`): skip this entire step — beads not configured.
+If beads IS initialized: all blocks below are mandatory. Plans without a `bead_id` cannot be tracked by execute-phase.
 
 **1. Find or create phase epic:**
 ```bash
-# Check if beads is initialized
-if [ ! -d .beads ]; then
-  echo "⚠️ Beads not initialized. Run /gsd:new-project to initialize."
-  # Continue without beads - non-blocking
-else
-  # Find existing epic for this phase
-  EPIC_JSON=$(bd list -t epic --label "phase-${phase_number}" --json 2>/dev/null || echo "[]")
-  
-  if [ "$EPIC_JSON" = "[]" ]; then
-    # Create epic if it doesn't exist
-    EPIC_ID=$(bd create "Epic: Phase ${phase_number} - ${phase_name}" \
-      -t epic \
-      -p 1 \
-      --label "phase-${phase_number}" \
-      --description="Phase ${phase_number}: $(grep -A 5 "### Phase ${phase_number}:" .planning/ROADMAP.md | head -6)" \
-      --json 2>/dev/null | jq -r '.id // empty')
-  else
-    EPIC_ID=$(echo "$EPIC_JSON" | jq -r '.[0].id')
-  fi
-fi
-```
+# REQUIRED: run this block when .beads/ exists
+if [ -d .beads ] && command -v bd &> /dev/null; then
+    EPIC_JSON=$(bd list -t epic --label "phase-${phase_number}" --json 2>/dev/null || echo "[]")
 
-**2. For each PLAN.md created:**
-```bash
-if [ -n "$EPIC_ID" ]; then
-  # Extract plan objective for bead title
-  PLAN_TITLE=$(grep -A 3 "<objective>" "$PLAN_PATH" | head -4 | tail -1 | sed 's/^[[:space:]]*//')
-  
-  # Create bead for the plan
-  BEAD_ID=$(bd create "Plan: ${phase}-${plan_number} - ${PLAN_TITLE}" \
-    --parent "$EPIC_ID" \
-    -t task \
-    -p 1 \
-    --description="Plan file: $PLAN_PATH\n\n$(grep -A 10 "<objective>" "$PLAN_PATH" | head -11)" \
-    --json 2>/dev/null | jq -r '.id // empty')
-  
-  if [ -n "$BEAD_ID" ]; then
-    # Add bead_id to plan frontmatter
-    sed -i "/^---$/a bead_id: ${BEAD_ID}" "$PLAN_PATH"
-  fi
-fi
-```
-
-**3. For each task within plans (optional, for fine-grained tracking):**
-```bash
-if [ -n "$BEAD_ID" ] && [ -n "$EPIC_ID" ]; then
-  # Extract task information and create child beads
-  grep -A 5 "<task type=" "$PLAN_PATH" | while read -r task_line; do
-    TASK_TITLE=$(echo "$task_line" | grep "<name>" | sed 's/<name>//' | sed 's/<\/name>//' | xargs)
-    if [ -n "$TASK_TITLE" ]; then
-      bd create "$TASK_TITLE" \
-        --parent "$BEAD_ID" \
-        -t task \
-        -p 1 \
-        --json 2>/dev/null
+    if [ "$EPIC_JSON" = "[]" ]; then
+        EPIC_ID=$(bd create "Epic: Phase ${phase_number} - ${phase_name}" \
+          -t epic \
+          -p 1 \
+          --label "phase-${phase_number}" \
+          --description="Phase ${phase_number}: $(grep -A 5 "### Phase ${phase_number}:" .planning/ROADMAP.md | head -6)" \
+          --json 2>/dev/null | jq -r '.id // empty')
+        echo "📊 Created epic ${EPIC_ID} for phase ${phase_number}"
+    else
+        EPIC_ID=$(echo "$EPIC_JSON" | jq -r '.[0].id')
+        echo "📊 Using existing epic ${EPIC_ID} for phase ${phase_number}"
     fi
-  done
 fi
 ```
 
-**Note:** Beads integration is non-blocking. If beads is not available or commands fail, planning continues normally.
+**2. REQUIRED — For each PLAN.md created, create bead and write bead_id to frontmatter:**
+```bash
+# REQUIRED: bead_id must be written into the plan file — execute-phase reads it at spawn time
+if [ -n "${EPIC_ID:-}" ]; then
+    PLAN_TITLE=$(grep -A 3 "<objective>" "$PLAN_PATH" | head -4 | tail -1 | sed 's/^[[:space:]]*//')
+
+    BEAD_ID=$(bd create "Plan: ${phase}-${plan_number} - ${PLAN_TITLE}" \
+      --parent "$EPIC_ID" \
+      -t task \
+      -p 1 \
+      --description="Plan file: $PLAN_PATH\n\n$(grep -A 10 "<objective>" "$PLAN_PATH" | head -11)" \
+      --json 2>/dev/null | jq -r '.id // empty')
+
+    if [ -n "$BEAD_ID" ]; then
+        # Insert bead_id before the closing --- of the YAML frontmatter
+        # NOTE: sed "/^---$/a" matches BOTH --- lines — use awk to target only the second one
+        awk -v bead="bead_id: ${BEAD_ID}" '
+          BEGIN { found_first=0 }
+          /^---$/ {
+            if (!found_first) { found_first=1; print; next }
+            else { print bead; print; next }
+          }
+          { print }
+        ' "$PLAN_PATH" > "${PLAN_PATH}.tmp" && mv "${PLAN_PATH}.tmp" "$PLAN_PATH"
+        echo "📊 Bead ${BEAD_ID} created and written to ${PLAN_PATH} frontmatter"
+    else
+        echo "⚠ Failed to create bead for plan ${plan_number} — bead_id not set"
+    fi
+fi
+```
+
+**3. Optional — task-level child beads (skip if EPIC_ID missing):**
+```bash
+if [ -n "${BEAD_ID:-}" ] && [ -n "${EPIC_ID:-}" ]; then
+    grep -oP '(?<=<name>)[^<]+' "$PLAN_PATH" | while read -r TASK_TITLE; do
+        [ -n "$TASK_TITLE" ] && bd create "$TASK_TITLE" \
+          --parent "$BEAD_ID" -t task -p 1 --json 2>/dev/null || true
+    done
+fi
+```
+
+**Failure handling:** If `bd` commands fail, log the error and continue planning — do not abort. But every attempt must be made. A plan missing `bead_id` when beads is initialized is a planning defect.
 </step>
 
 <step name="update_roadmap">
