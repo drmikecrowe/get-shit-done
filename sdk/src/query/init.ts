@@ -27,7 +27,7 @@ import { loadConfig } from '../config.js';
 import { resolveModel, MODEL_PROFILES } from './config-query.js';
 import { findPhase } from './phase.js';
 import { roadmapGetPhase, getMilestoneInfo } from './roadmap.js';
-import { planningPaths, normalizePhaseName, toPosixPath } from './helpers.js';
+import { planningPaths, normalizePhaseName, toPosixPath, resolveAgentsDir, detectRuntime } from './helpers.js';
 import type { QueryHandler } from './utils.js';
 
 // ─── Internal helpers ──────────────────────────────────────────────────────
@@ -79,11 +79,16 @@ function getLatestCompletedMilestone(projectDir: string): { version: string; nam
 
 /**
  * Check which GSD agents are installed on disk.
+ *
+ * Runtime-aware per issue #2402: detects the invoking runtime
+ * (`GSD_RUNTIME` → `config.runtime` → 'claude') and probes that runtime's
+ * canonical `agents/` directory. `GSD_AGENTS_DIR` still short-circuits.
+ *
  * Port of checkAgentsInstalled from core.cjs lines 1274-1306.
  */
-function checkAgentsInstalled(): { agents_installed: boolean; missing_agents: string[] } {
-  const agentsDir = process.env.GSD_AGENTS_DIR
-    || join(homedir(), '.claude', 'get-shit-done', 'agents');
+function checkAgentsInstalled(config?: { runtime?: unknown }): { agents_installed: boolean; missing_agents: string[] } {
+  const runtime = detectRuntime(config);
+  const agentsDir = resolveAgentsDir(runtime);
   const expectedAgents = Object.keys(MODEL_PROFILES);
 
   if (!existsSync(agentsDir)) {
@@ -172,7 +177,7 @@ export function withProjectRoot(
 ): Record<string, unknown> {
   result.project_root = projectDir;
 
-  const agentStatus = checkAgentsInstalled();
+  const agentStatus = checkAgentsInstalled(config);
   result.agents_installed = agentStatus.agents_installed;
   result.missing_agents = agentStatus.missing_agents;
 
@@ -747,6 +752,7 @@ export const initMilestoneOp: QueryHandler = async (_args, projectDir) => {
  */
 export const initMapCodebase: QueryHandler = async (_args, projectDir) => {
   const config = await loadConfig(projectDir);
+  const now = new Date();
   const codebaseDir = join(projectDir, '.planning', 'codebase');
   let existingMaps: string[] = [];
   try {
@@ -761,6 +767,8 @@ export const initMapCodebase: QueryHandler = async (_args, projectDir) => {
     search_gitignored: config.search_gitignored,
     parallelization: config.parallelization,
     subagent_timeout: (config as Record<string, unknown>).subagent_timeout ?? undefined,
+    date: now.toISOString().split('T')[0],
+    timestamp: now.toISOString(),
     codebase_dir: '.planning/codebase',
     existing_maps: existingMaps,
     has_maps: existingMaps.length > 0,

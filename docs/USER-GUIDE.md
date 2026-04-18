@@ -8,6 +8,7 @@ A detailed reference for workflows, troubleshooting, and configuration. For quic
 
 - [Workflow Diagrams](#workflow-diagrams)
 - [UI Design Contract](#ui-design-contract)
+- [Spiking & Sketching](#spiking--sketching)
 - [Backlog & Threads](#backlog--threads)
 - [Workstreams](#workstreams)
 - [Security](#security)
@@ -256,6 +257,59 @@ Controlled by `workflow.ui_safety_gate` config toggle.
 ### Screenshot Storage
 
 `/gsd-ui-review` captures screenshots via Playwright CLI to `.planning/ui-reviews/`. A `.gitignore` is created automatically to prevent binary files from reaching git. Screenshots are cleaned up during `/gsd-complete-milestone`.
+
+---
+
+## Spiking & Sketching
+
+Use `/gsd-spike` to validate technical feasibility before planning, and `/gsd-sketch` to explore visual direction before designing. Both store artifacts in `.planning/` and integrate with the project-skills system via their wrap-up companions.
+
+### When to Spike
+
+Spike when you're uncertain whether a technical approach is feasible or want to compare two implementations before committing a phase to one of them.
+
+```
+/gsd-spike                              # Interactive intake — describes the question, you confirm
+/gsd-spike "can we stream LLM tokens through SSE"
+/gsd-spike --quick "websocket vs SSE latency"
+```
+
+Each spike runs 2–5 experiments. Every experiment has:
+- A **Given / When / Then** hypothesis written before any code
+- **Working code** (not pseudocode)
+- A **VALIDATED / INVALIDATED / PARTIAL** verdict with evidence
+
+Results land in `.planning/spikes/NNN-name/README.md` and are indexed in `.planning/spikes/MANIFEST.md`.
+
+Once you have signal, run `/gsd-spike-wrap-up` to package the findings into `.claude/skills/spike-findings-[project]/` — future sessions will load them automatically via project-skills discovery.
+
+### When to Sketch
+
+Sketch when you need to compare layout structures, interaction models, or visual treatments before writing any real component code.
+
+```
+/gsd-sketch                             # Mood intake — explores feel, references, core action
+/gsd-sketch "dashboard layout"
+/gsd-sketch --quick "sidebar navigation"
+/gsd-sketch --text "onboarding flow"    # For non-Claude runtimes (Codex, Gemini, etc.)
+```
+
+Each sketch answers **one design question** with 2–3 variants in a single `index.html` you open directly in a browser — no build step. Variants use tab navigation and shared CSS variables from `themes/default.css`. All interactive elements (hover, click, transitions) are functional.
+
+After picking a winner, run `/gsd-sketch-wrap-up` to capture the visual decisions into `.claude/skills/sketch-findings-[project]/`.
+
+### Spike → Sketch → Phase Flow
+
+```
+/gsd-spike "SSE vs WebSocket"     # Validate the approach
+/gsd-spike-wrap-up                # Package learnings
+
+/gsd-sketch "real-time feed UI"   # Explore the design
+/gsd-sketch-wrap-up               # Package decisions
+
+/gsd-discuss-phase N              # Lock in preferences (now informed by spike + sketch)
+/gsd-plan-phase N                 # Plan with confidence
+```
 
 ---
 
@@ -798,14 +852,20 @@ Each workspace gets:
 
 ## Troubleshooting
 
+### Programmatic CLI (`gsd-sdk query` vs `gsd-tools.cjs`)
+
+For automation and copy-paste from docs, prefer **`gsd-sdk query`** with a registered subcommand (see [CLI-TOOLS.md](CLI-TOOLS.md) and [QUERY-HANDLERS.md](../sdk/src/query/QUERY-HANDLERS.md)). The legacy **`node $HOME/.claude/get-shit-done/bin/gsd-tools.cjs`** CLI remains supported for dual-mode operation.
+
+**Not yet on `gsd-sdk query` (use CJS):** `state validate`, `state sync`, `audit-open`, `graphify`, `from-gsd2`, and any subcommand not listed in the registry.
+
 ### STATE.md Out of Sync
 
-If STATE.md shows incorrect phase status or position, use the state consistency commands:
+If STATE.md shows incorrect phase status or position, use the state consistency commands (**CJS-only** until ported to the query layer):
 
 ```bash
-node gsd-tools.cjs state validate          # Detect drift between STATE.md and filesystem
-node gsd-tools.cjs state sync --verify     # Preview what sync would change
-node gsd-tools.cjs state sync              # Reconstruct STATE.md from disk
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state validate          # Detect drift between STATE.md and filesystem
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state sync --verify     # Preview what sync would change
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state sync              # Reconstruct STATE.md from disk
 ```
 
 These commands are new in v1.32 and replace manual STATE.md editing.
@@ -935,6 +995,111 @@ When a workflow fails in a way that isn't obvious -- plans reference nonexistent
 
 **Output:** A diagnostic report written to `.planning/forensics/` with findings and suggested remediation steps.
 
+### Executor Subagent Gets "Permission denied" on Bash Commands
+
+GSD's `gsd-executor` subagents need write-capable Bash access to a project's standard tooling — `git commit`, `bin/rails`, `bundle exec`, `npm run`, `uv run`, and similar commands. Claude Code's default `~/.claude/settings.json` only allows a narrow set of read-only git commands, so a fresh install will hit "Permission to use Bash has been denied" the first time an executor tries to make a commit or run a build tool.
+
+**Fix: add the required patterns to `~/.claude/settings.json`.**
+
+The patterns you need depend on your stack. Copy the block for your stack and add it to the `permissions.allow` array.
+
+#### Required for all stacks (git + gh)
+
+```json
+"Bash(git add:*)",
+"Bash(git commit:*)",
+"Bash(git merge:*)",
+"Bash(git worktree:*)",
+"Bash(git rebase:*)",
+"Bash(git reset:*)",
+"Bash(git checkout:*)",
+"Bash(git switch:*)",
+"Bash(git restore:*)",
+"Bash(git stash:*)",
+"Bash(git rm:*)",
+"Bash(git mv:*)",
+"Bash(git fetch:*)",
+"Bash(git cherry-pick:*)",
+"Bash(git apply:*)",
+"Bash(gh:*)"
+```
+
+#### Rails / Ruby
+
+```json
+"Bash(bin/rails:*)",
+"Bash(bin/brakeman:*)",
+"Bash(bin/bundler-audit:*)",
+"Bash(bin/importmap:*)",
+"Bash(bundle:*)",
+"Bash(rubocop:*)",
+"Bash(erb_lint:*)"
+```
+
+#### Python / uv
+
+```json
+"Bash(uv:*)",
+"Bash(python:*)",
+"Bash(pytest:*)",
+"Bash(ruff:*)",
+"Bash(mypy:*)"
+```
+
+#### Node / npm / pnpm / bun
+
+```json
+"Bash(npm:*)",
+"Bash(npx:*)",
+"Bash(pnpm:*)",
+"Bash(bun:*)",
+"Bash(node:*)"
+```
+
+#### Rust / Cargo
+
+```json
+"Bash(cargo:*)"
+```
+
+**Example `~/.claude/settings.json` snippet (Rails project):**
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Write",
+      "Edit",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)",
+      "Bash(git worktree:*)",
+      "Bash(git rebase:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash:*)",
+      "Bash(git rm:*)",
+      "Bash(git mv:*)",
+      "Bash(git fetch:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git apply:*)",
+      "Bash(gh:*)",
+      "Bash(bin/rails:*)",
+      "Bash(bin/brakeman:*)",
+      "Bash(bin/bundler-audit:*)",
+      "Bash(bundle:*)",
+      "Bash(rubocop:*)"
+    ]
+  }
+}
+```
+
+**Per-project permissions (scoped to one repo):** If you prefer to allow these patterns for a single project rather than globally, add the same `permissions.allow` block to `.claude/settings.local.json` in your project root instead of `~/.claude/settings.json`. Claude Code checks project-local settings first.
+
+**Interactive guidance:** When an executor is blocked mid-phase, it will identify the exact pattern needed (e.g. `"Bash(bin/rails:*)"`) so you can add it and re-run `/gsd-execute-phase`.
+
 ### Subagent Appears to Fail but Work Was Done
 
 A known workaround exists for a Claude Code classification bug. GSD's orchestrators (execute-phase, quick) spot-check actual output before reporting failure. If you see a failure message but commits were made, check `git log` -- the work may have succeeded.
@@ -997,6 +1162,14 @@ For reference, here is what GSD creates in your project:
     done/                 # Completed todos
   debug/                  # Active debug sessions
     resolved/             # Archived debug sessions
+  spikes/                 # Feasibility experiments (from /gsd-spike)
+    NNN-name/             # Experiment code + README with verdict
+    MANIFEST.md           # Index of all spikes
+  sketches/               # HTML mockups (from /gsd-sketch)
+    NNN-name/             # index.html (2-3 variants) + README
+    themes/
+      default.css         # Shared CSS variables for all sketches
+    MANIFEST.md           # Index of all sketches with winners
   codebase/               # Brownfield codebase mapping (from /gsd-map-codebase)
   phases/
     XX-phase-name/
