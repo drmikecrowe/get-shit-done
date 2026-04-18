@@ -430,6 +430,23 @@ Fill template sections: frontmatter (phase/timestamp/status/score), goal achieve
 See ~/.claude/get-shit-done/templates/verification-report.md for complete template.
 </step>
 
+<step name="beads_verification_comment">
+# BEADS: comment verification result on phase epic
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_EPIC=$(bd list -t epic --label "phase-${phase_number}" --json 2>/dev/null | jq -r '.[0].id // empty' 2>/dev/null)
+    if [ -n "$PHASE_EPIC" ]; then
+        if [ "${VERIFICATION_STATUS:-}" = "passed" ] || [ "${GAPS_FOUND:-0}" = "0" ]; then
+            bd comment add "$PHASE_EPIC" "Phase ${phase_number} verified: PASS $(date +%Y-%m-%d)" 2>/dev/null || true
+        else
+            bd comment add "$PHASE_EPIC" "Phase ${phase_number} verified: GAPS FOUND — see VERIFICATION.md" 2>/dev/null || true
+        fi
+    fi
+    bd sync 2>/dev/null || true
+fi
+```
+</step>
+
 <step name="return_to_orchestrator">
 Return status (`passed` | `gaps_found` | `human_needed`), score (N/M must-haves), report path.
 

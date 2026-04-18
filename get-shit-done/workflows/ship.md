@@ -158,6 +158,23 @@ If `--draft` flag was passed: add `--draft`.
 Report: "PR #{number} created: {url}"
 </step>
 
+<step name="record_pr_beads">
+# BEADS: record PR URL on phase beads
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    for BEAD_ID in $(bd list --label "phase-${PHASE_NUMBER}" --status in_progress --json 2>/dev/null | jq -r '.[].id // empty' 2>/dev/null); do
+        bd comment add "$BEAD_ID" "Shipped: PR ${PR_URL}" 2>/dev/null || true
+    done
+    for BEAD_ID in $(bd list --label "phase-${PHASE_NUMBER}" --status closed --json 2>/dev/null | jq -r '.[].id // empty' 2>/dev/null); do
+        bd comment add "$BEAD_ID" "Shipped: PR ${PR_URL}" 2>/dev/null || true
+    done
+    PHASE_EPIC=$(bd list -t epic --label "phase-${PHASE_NUMBER}" --json 2>/dev/null | jq -r '.[0].id // empty' 2>/dev/null)
+    [ -n "$PHASE_EPIC" ] && bd comment add "$PHASE_EPIC" "Shipped: PR ${PR_URL}" 2>/dev/null || true
+    bd sync 2>/dev/null || true
+fi
+```
+</step>
+
 <step name="optional_review">
 
 **External code review command (automated sub-step):**

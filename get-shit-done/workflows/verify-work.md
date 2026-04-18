@@ -412,6 +412,24 @@ Present summary:
 
 **If issues > 0:** Proceed to `diagnose_issues`
 
+# BEADS: comment UAT result on phase epic; create bug beads for blockers
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_EPIC=$(bd list -t epic --label "phase-${phase_number}" --json 2>/dev/null | jq -r '.[0].id // empty' 2>/dev/null)
+    if [ "${issues}" = "0" ]; then
+        [ -n "$PHASE_EPIC" ] && bd comment add "$PHASE_EPIC" "UAT passed: $(date +%Y-%m-%d)" 2>/dev/null || true
+    else
+        for BLOCKED_ITEM in $(jq -r '.[] | select(.result == "blocked") | .name' "${uat_path}" 2>/dev/null); do
+            BLOCKER_ID=$(bd create "UAT blocker: ${BLOCKED_ITEM}" -t bug -p 0 \
+              --label "phase-${phase_number}" \
+              --description="UAT item blocked: ${BLOCKED_ITEM}" \
+              --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
+            [ -n "$PHASE_EPIC" ] && [ -n "$BLOCKER_ID" ] && bd dep add "$PHASE_EPIC" "$BLOCKER_ID" 2>/dev/null || true
+        done
+    fi
+fi
+```
+
 **If issues == 0:**
 
 ```bash
