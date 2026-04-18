@@ -65,6 +65,8 @@ bd comment add "$BEAD_ID" "Deviation: {description} — auto-fixed" 2>/dev/null 
 
 # If new work discovered:
 bd create "{work title}" --deps "discovered-from:${BEAD_ID}" -t task 2>/dev/null || true
+# Sync immediately so discovered beads are visible across worktrees
+bd sync 2>/dev/null || true
 ```
 
 **STEP 3 — When blocked during execution (REQUIRED):**
@@ -73,14 +75,23 @@ bd create "{work title}" --deps "discovered-from:${BEAD_ID}" -t task 2>/dev/null
 bd update "$BEAD_ID" -s blocked 2>/dev/null || true
 BLOCKER_ID=$(bd create "Blocker: {reason}" -p 0 -t bug --json 2>/dev/null | jq -r '.id // empty')
 [ -n "$BLOCKER_ID" ] && bd dep add "$BEAD_ID" "$BLOCKER_ID" 2>/dev/null || true
+bd sync 2>/dev/null || true
 ```
 
 **STEP 4 — Plan complete (REQUIRED):**
 ```bash
 # REQUIRED: close bead — do not skip
-bd close "$BEAD_ID" --reason "Implemented {X}, tested {Y}" 2>/dev/null \
-  && echo "📊 Bead ${BEAD_ID} → closed" \
-  || echo "⚠ Failed to close bead ${BEAD_ID} — run manually: bd close ${BEAD_ID}"
+# If SUMMARY.md was NOT written (executor error/context exhaustion): mark blocked instead
+SUMMARY_PATH="{phase_dir}/{phase}-{plan}-SUMMARY.md"
+if [ -f "$SUMMARY_PATH" ]; then
+    bd close "$BEAD_ID" --reason "Implemented {X}, tested {Y}" 2>/dev/null \
+      && echo "📊 Bead ${BEAD_ID} → closed" \
+      || echo "⚠ Failed to close bead ${BEAD_ID} — run manually: bd close ${BEAD_ID}"
+else
+    bd update "$BEAD_ID" -s blocked 2>/dev/null || true
+    bd comment add "$BEAD_ID" "Executor exited without writing SUMMARY.md — needs retry or manual close" 2>/dev/null || true
+    echo "⚠ SUMMARY.md not written — bead ${BEAD_ID} marked blocked for visibility"
+fi
 ```
 
 **Failure fallback:** If `bd` command errors, log it and continue — do not abort execution. But DO attempt each step. "Non-blocking" means failure is tolerated, not that the attempt is optional.

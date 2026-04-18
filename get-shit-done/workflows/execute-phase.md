@@ -164,6 +164,16 @@ if command -v bd &> /dev/null && [ -d .beads ]; then
         echo "Override: 'bd update <bead-id> -s ready' to unblock."
         BEADS_BLOCKED=true
     fi
+
+    # Surface beads stuck in_progress — may indicate a crashed prior run
+    STALE_BEADS=$(bd list -t task --label "phase-${PHASE_NUMBER}" --status in_progress --json 2>/dev/null || echo "[]")
+    if [ "$STALE_BEADS" != "[]" ]; then
+        echo ""
+        echo "⚠  STALE in_progress BEADS in phase ${PHASE_NUMBER} — may indicate a prior crashed run:"
+        echo "$STALE_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"'
+        echo ""
+        echo "If these are from a previous run: bd update <bead-id> -s ready (to retry) or bd close <bead-id> (to skip)"
+    fi
 else
     BEADS_AVAILABLE=false
 fi
@@ -867,6 +877,13 @@ Execute each selected wave in sequence. Within a wave: parallel if `PARALLELIZAT
              && echo "📊 Bead ${BEAD_ID} → closed" \
              || echo "⚠ Failed to close bead ${BEAD_ID} — update manually: bd close ${BEAD_ID}"
        fi
+   fi
+   ```
+
+   ```bash
+   # Sync beads after each wave so parallel worktrees see current state
+   if [ "${BEADS_AVAILABLE:-false}" = "true" ]; then
+       bd sync 2>/dev/null && echo "📊 Beads synced after wave" || echo "⚠ bd sync failed — run manually"
    fi
    ```
 
