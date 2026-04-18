@@ -481,6 +481,35 @@ grep -A 3 "^### CR-\|^### WR-" "${REVIEW_PATH}" | head -n 12
 
 **Note on tests:** Automated tests for this command and workflow are planned for Phase 4 (Pipeline Integration & Testing, requirement INFR-03). Phase 2 focuses on correct implementation; Phase 4 adds regression coverage across platforms.
 
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_EPIC=$(bd list -t epic --label "phase-${PHASE_NUMBER}" --json 2>/dev/null | jq -r '.[0].id // empty')
+
+    # Create a task bead for the review findings (only if critical or warning findings exist)
+    CRITICAL_COUNT="${CRITICAL:-0}"
+    HIGH_COUNT="${WARNING:-0}"
+    TOTAL_FINDINGS=$(( CRITICAL_COUNT + HIGH_COUNT ))
+
+    if [ "$TOTAL_FINDINGS" -gt 0 ] 2>/dev/null; then
+        REVIEW_BEAD=$(bd create "Code review findings: Phase ${PHASE_NUMBER}" \
+          -t task -p 1 \
+          --label "phase-${PHASE_NUMBER}" \
+          --label "code-review" \
+          --description="Critical: ${CRITICAL_COUNT}, High: ${HIGH_COUNT} — see REVIEW.md" \
+          --json 2>/dev/null | jq -r '.id // empty')
+        echo "📊 Review bead ${REVIEW_BEAD} created for ${CRITICAL_COUNT} critical + ${HIGH_COUNT} high findings"
+        [ -n "$PHASE_EPIC" ] && [ -n "$REVIEW_BEAD" ] && bd dep add "$PHASE_EPIC" "$REVIEW_BEAD" 2>/dev/null || true
+    fi
+
+    # Comment summary on phase epic regardless of findings
+    if [ -n "$PHASE_EPIC" ]; then
+        bd comment add "$PHASE_EPIC" "Code review complete: ${TOTAL_FINDINGS:-0} findings (critical: ${CRITICAL_COUNT:-0})" 2>/dev/null || true
+    fi
+
+    bd sync 2>/dev/null || true
+fi
+```
+
 ═══════════════════════════════════════════════════════════════
 </step>
 

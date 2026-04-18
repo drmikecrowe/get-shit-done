@@ -474,6 +474,27 @@ fi
 ```bash
 echo "═══════════════════════════════════════════════════════════════"
 ```
+
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    REVIEW_BEAD=$(bd list -t task --label "phase-${PHASE_NUMBER}" --label "code-review" --status ready --json 2>/dev/null \
+      | jq -r '.[0].id // empty')
+    [ -z "$REVIEW_BEAD" ] && REVIEW_BEAD=$(bd list -t task --label "code-review" --label "phase-${PHASE_NUMBER}" --json 2>/dev/null \
+      | jq -r '.[0].id // empty')
+
+    if [ -n "$REVIEW_BEAD" ]; then
+        if [ "${FIX_STATUS:-}" = "all_fixed" ] || [ "${SKIPPED_COUNT:-0}" = "0" ] 2>/dev/null; then
+            bd close "$REVIEW_BEAD" --reason "All review findings fixed: $(date +%Y-%m-%d)" 2>/dev/null \
+              && echo "📊 Review bead ${REVIEW_BEAD} closed — all fixed" || true
+        else
+            bd comment add "$REVIEW_BEAD" "Partial fix: ${SKIPPED_COUNT:-unknown} findings remain" 2>/dev/null || true
+            echo "📊 Review bead ${REVIEW_BEAD} updated — ${SKIPPED_COUNT:-?} remaining"
+        fi
+    fi
+
+    bd sync 2>/dev/null || true
+fi
+```
 </step>
 
 </process>

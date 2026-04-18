@@ -207,6 +207,38 @@ Plus full markdown report with tables for requirements, phases, integration, tec
 
 Route by status (see `<offer_next>`).
 
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    MILESTONE_VERSION="${milestone_version:-unknown}"
+    MILESTONE_EPIC=$(bd list -t epic --label "milestone-${MILESTONE_VERSION}" --json 2>/dev/null | jq -r '.[0].id // empty')
+
+    # Derive satisfied and gap counts from audit scores
+    SATISFIED_COUNT=$(echo "$AUDIT_SCORES" | grep -oP 'requirements:\s*\K[0-9]+(?=/)' | head -1 2>/dev/null || echo "?")
+    REQ_TOTAL=$(echo "$AUDIT_SCORES" | grep -oP 'requirements:\s*[0-9]+/\K[0-9]+' | head -1 2>/dev/null || echo "?")
+    GAP_COUNT=$(( ${REQ_TOTAL:-0} - ${SATISFIED_COUNT:-0} )) 2>/dev/null || GAP_COUNT=0
+
+    if [ -n "$MILESTONE_EPIC" ]; then
+        bd comment add "$MILESTONE_EPIC" \
+          "Milestone audit ${MILESTONE_VERSION}: ${SATISFIED_COUNT:-?} requirements satisfied, ${GAP_COUNT:-0} gaps" \
+          2>/dev/null || true
+    fi
+
+    # Create blocker beads for requirement gaps (if any)
+    if [ "${GAP_COUNT:-0}" -gt 0 ] 2>/dev/null; then
+        GAP_BEAD=$(bd create "Audit gaps: Milestone ${MILESTONE_VERSION}" \
+          -t task -p 1 \
+          --label "milestone-${MILESTONE_VERSION}" \
+          --label "audit-gap" \
+          --description="${GAP_COUNT} unsatisfied requirements — see MILESTONE-AUDIT.md" \
+          --json 2>/dev/null | jq -r '.id // empty')
+        echo "📊 Audit gap bead ${GAP_BEAD} created for ${GAP_COUNT} gaps"
+        [ -n "$MILESTONE_EPIC" ] && [ -n "$GAP_BEAD" ] && bd dep add "$MILESTONE_EPIC" "$GAP_BEAD" 2>/dev/null || true
+    fi
+
+    bd sync 2>/dev/null || true
+fi
+```
+
 </process>
 
 <offer_next>
