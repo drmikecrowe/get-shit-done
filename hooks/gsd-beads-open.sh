@@ -28,24 +28,8 @@ PROMPT=$(echo "$INPUT" | node -e "
 
 [[ -n "$PROMPT" ]] || exit 0
 
-# Strategy 1: find an explicit PLAN.md file path in the prompt
+# Find explicit PLAN.md path in the agent prompt
 PLAN_PATH=$(echo "$PROMPT" | grep -oP '\.planning/phases/[^/]+/[^"<\s]+\-PLAN\.md' | head -1 || true)
-
-# Strategy 2: parse "plan NN of phase MM" or "plan NN phase MM" text
-if [[ -z "$PLAN_PATH" ]] && [[ -d .planning/phases ]]; then
-    PHASE_NUM=$(echo "$PROMPT" | grep -oP '(?<=phase )\d+' | head -1 || true)
-    PLAN_NUM=$(echo "$PROMPT"  | grep -oP '(?<=plan )\d+'  | head -1 || true)
-
-    if [[ -n "$PHASE_NUM" && -n "$PLAN_NUM" ]]; then
-        # Zero-pad single digits (01, 02, ...)
-        PHASE_PAD=$(printf '%02d' "$PHASE_NUM")
-        PLAN_PAD=$(printf '%02d' "$PLAN_NUM")
-        PLAN_PATH=$(find .planning/phases -name "${PHASE_PAD}-${PLAN_PAD}-PLAN.md" 2>/dev/null | head -1 || true)
-        [[ -n "$PLAN_PATH" ]] || \
-            PLAN_PATH=$(find .planning/phases -name "*PLAN.md" 2>/dev/null \
-                | grep "/${PHASE_PAD}-${PLAN_PAD}-" | head -1 || true)
-    fi
-fi
 
 [[ -n "$PLAN_PATH" && -f "$PLAN_PATH" ]] || exit 0
 
