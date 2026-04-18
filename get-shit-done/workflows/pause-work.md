@@ -205,6 +205,22 @@ timestamp=$(gsd-sdk query current-timestamp full --raw)
 ```
 </step>
 
+<step name="beads_pause">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_NUMBER="${phase:-$(grep -oP '(?<=current_phase: )\d+' .planning/STATE.md 2>/dev/null | head -1)}"
+    IN_PROGRESS=$(bd list -t task --label "phase-${PHASE_NUMBER}" --status in_progress --json 2>/dev/null || echo "[]")
+    if [ "$IN_PROGRESS" != "[]" ]; then
+        echo "$IN_PROGRESS" | jq -r '.[].id' | while read -r BID; do
+            bd comment add "$BID" "Work paused: ${PAUSE_REASON:-session end}" 2>/dev/null || true
+        done
+        echo "📊 Pause comment added to $(echo "$IN_PROGRESS" | jq '. | length') in-progress beads"
+    fi
+    bd sync 2>/dev/null || true
+fi
+```
+</step>
+
 <step name="commit">
 ```bash
 gsd-sdk query commit "wip: [context-name] paused at [X]/[Y]" [handoff-path] .planning/HANDOFF.json

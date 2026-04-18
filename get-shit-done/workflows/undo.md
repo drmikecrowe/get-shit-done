@@ -260,6 +260,26 @@ git commit -m "revert: undo ${N} selected commits — ${REVERT_REASON}"
 ```
 </step>
 
+<step name="beads_reopen">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    # Find closed beads for the reverted phase/plan and reopen them
+    REVERT_LABEL="${TARGET_PHASE:+phase-${TARGET_PHASE}}"
+    if [ -n "$REVERT_LABEL" ]; then
+        CLOSED_BEADS=$(bd list -t task --label "$REVERT_LABEL" --status closed --json 2>/dev/null || echo "[]")
+        if [ "$CLOSED_BEADS" != "[]" ]; then
+            echo "$CLOSED_BEADS" | jq -r '.[].id' | while read -r BID; do
+                bd update "$BID" -s ready 2>/dev/null || true
+                bd comment add "$BID" "Reopened: work reverted — ${REVERT_REASON:-undo}" 2>/dev/null || true
+                echo "📊 Bead ${BID} reopened (reverted)"
+            done
+        fi
+    fi
+    bd sync 2>/dev/null || true
+fi
+```
+</step>
+
 <step name="summary">
 Display the completion banner:
 

@@ -135,6 +135,19 @@ CONTEXT: [✓ if has_context | - if not]
 
 </step>
 
+<step name="beads_summary">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    echo ""
+    echo "📊 Beads:"
+    READY_COUNT=$(bd list -t task --status ready --json 2>/dev/null | jq '. | length' || echo "?")
+    IN_PROGRESS_COUNT=$(bd list -t task --status in_progress --json 2>/dev/null | jq '. | length' || echo "?")
+    BLOCKED_COUNT=$(bd list -t task --status blocked --json 2>/dev/null | jq '. | length' || echo "?")
+    echo "  ready: ${READY_COUNT}  in_progress: ${IN_PROGRESS_COUNT}  blocked: ${BLOCKED_COUNT}"
+fi
+```
+</step>
+
 <step name="route">
 **Determine next action based on verified counts.**
 

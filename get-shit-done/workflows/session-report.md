@@ -114,6 +114,23 @@ Write `.planning/reports/SESSION_REPORT.md` (or `.planning/reports/YYYYMMDD-sess
 ```
 </step>
 
+<step name="beads_session_comment">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_NUMBER="${phase:-$(grep -oP '(?<=current_phase: )\d+' .planning/STATE.md 2>/dev/null | head -1)}"
+    PHASE_EPIC=$(bd list -t epic --label "phase-${PHASE_NUMBER}" --json 2>/dev/null | jq -r '.[0].id // empty')
+    if [ -n "$PHASE_EPIC" ]; then
+        COMMITS_COUNT=$(git log --oneline --since="24 hours ago" --no-merges 2>/dev/null | wc -l | tr -d ' ')
+        PLANS_EXECUTED=$(ls -1 .planning/phases/*/*.md 2>/dev/null | grep -c SUMMARY || echo "?")
+        bd comment add "$PHASE_EPIC" \
+          "Session report: ${COMMITS_COUNT:-?} commits, ${PLANS_EXECUTED:-?} plans — $(date +%Y-%m-%d)" \
+          2>/dev/null || true
+    fi
+    bd sync 2>/dev/null || true
+fi
+```
+</step>
+
 <step name="display_result">
 Show the user:
 

@@ -193,6 +193,19 @@ If STATE.md shows paused_at:
 → Next action: `/gsd-resume-work`
 </step>
 
+<step name="beads_ready">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    READY_BEADS=$(bd list -t task --status ready --json 2>/dev/null || echo "[]")
+    if [ "$READY_BEADS" != "[]" ]; then
+        echo ""
+        echo "📊 Ready beads:"
+        echo "$READY_BEADS" | jq -r '.[] | "  • \(.id): \(.title)"' | head -5
+    fi
+fi
+```
+</step>
+
 <step name="show_and_execute">
 Display the determination:
 

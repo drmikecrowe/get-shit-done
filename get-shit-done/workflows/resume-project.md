@@ -59,6 +59,37 @@ cat .planning/PROJECT.md
 
 </step>
 
+<step name="beads_status">
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    echo ""
+    echo "📊 Beads Status:"
+
+    # In-progress beads (may be stale from prior session)
+    IN_PROGRESS=$(bd list -t task --status in_progress --json 2>/dev/null || echo "[]")
+    if [ "$IN_PROGRESS" != "[]" ]; then
+        echo "  ⚠  In-progress (may be stale):"
+        echo "$IN_PROGRESS" | jq -r '.[] | "    • \(.id): \(.title)"' | head -5
+    fi
+
+    # Ready beads (next work)
+    READY=$(bd list -t task --status ready --json 2>/dev/null || echo "[]")
+    if [ "$READY" != "[]" ]; then
+        echo "  ✓  Ready:"
+        echo "$READY" | jq -r '.[] | "    • \(.id): \(.title)"' | head -5
+    fi
+
+    # Blocked beads
+    BLOCKED=$(bd list -t task --status blocked --json 2>/dev/null || echo "[]")
+    if [ "$BLOCKED" != "[]" ]; then
+        echo "  ⛔  Blocked:"
+        echo "$BLOCKED" | jq -r '.[] | "    • \(.id): \(.title)"' | head -5
+    fi
+    echo ""
+fi
+```
+</step>
+
 <step name="check_incomplete_work">
 Look for incomplete work that needs attention:
 
