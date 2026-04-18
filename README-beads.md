@@ -1,6 +1,6 @@
 # GSD + Beads Integration — Graft Reference
 
-This document records exactly how the `beads` branch grafts [Beads](https://github.com/stevegeense/beads)
+This document records exactly how the `beads` branch grafts [Beads](https://github.com/steveyegge/beads)
 issue tracking into GSD. Its purpose is to make upstream rebases and conflict resolution fast and unambiguous.
 
 ## What Beads Is
@@ -170,7 +170,25 @@ The `awk` insertion targets the **closing** `---` of the YAML block (not the ope
         │     ├── STEP 3: if blocked → bd update blocked + create blocker dep
         │     └── STEP 4: bd close on plan complete
         └── after return: bd close + bd sync (hook gsd-beads-close fires here)
+
+/gsd:verify-work
+  └── (no bead interaction currently — beads already closed by executor)
+      NOTE: consider bd comment add $BEAD_ID "Verified: {summary}" post-verification
+
+/gsd:ship
+  └── (no bead interaction currently — beads already closed before PR opened)
+      KNOWN GAP: bead status "closed" before PR exists misrepresents reality.
+      Ideal: bd update $BEAD_ID -s shipped + bd comment "PR: {url}" before final close,
+      then close only after PR merged/approved.
 ```
+
+---
+
+## Known Gaps
+
+1. **Ship/verify lifecycle**: Beads are closed when the executor finishes. The PR and code review haven't happened yet. A `shipped` intermediate state (bead gets PR URL comment, transitions to `closed` only on merge/approval) would more accurately represent reality. This is a future improvement — not currently implemented.
+
+2. **Reviewer integration hook point**: The gap between executor close and PR merge is the natural place to run a cross-AI reviewer. A `shipped` bead state would signal the reviewer to run, and reviewer approval would transition the bead to `closed`.
 
 ---
 
@@ -213,7 +231,7 @@ When pulling new upstream `main` into this branch:
 
 ```bash
 # Install beads
-npm install -g @stevegeense/beads   # or whatever the install is
+npm install -g @steveyegge/beads   # or whatever the install is
 cd <project>
 bd init
 bd setup claude

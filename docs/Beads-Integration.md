@@ -152,6 +152,6 @@ Edit `.planning/config.json`:
 
 ## References
 
-- Beads: https://github.com/stevegeense/beads
+- Beads: https://github.com/steveyegge/beads
 - Beads workflow docs: `bd prime` output after `bd setup claude`
 - GSD architecture: `.planning/` structure and agent system
