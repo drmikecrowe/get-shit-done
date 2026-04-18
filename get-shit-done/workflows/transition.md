@@ -184,6 +184,24 @@ The `completed/` subfolder pattern from create-meta-prompts handles archival.
 
 </step>
 
+<step name="beads_close_phase_epic">
+
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    PHASE_EPIC=$(bd list -t epic --label "phase-${current_phase}" --json 2>/dev/null | jq -r '.[0].id // empty')
+    if [ -n "$PHASE_EPIC" ]; then
+        STATUS=$(bd show "$PHASE_EPIC" --json 2>/dev/null | jq -r '.status // "unknown"')
+        if [ "$STATUS" != "closed" ]; then
+            bd close "$PHASE_EPIC" --reason "Phase ${current_phase} transitioned to complete" 2>/dev/null \
+              && echo "📊 Phase ${current_phase} epic closed" || true
+        fi
+    fi
+    bd sync 2>/dev/null || true
+fi
+```
+
+</step>
+
 <step name="evolve_project">
 
 Evolve PROJECT.md to reflect learnings from completed phase.

@@ -496,6 +496,38 @@ Success criteria:
 gsd-sdk query commit "docs: create milestone v[X.Y] roadmap ([N] phases)" .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md
 ```
 
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    # Create milestone-level epic
+    MILESTONE_VERSION="${current_milestone:-unknown}"
+    MILESTONE_EPIC=$(bd create "Milestone: ${MILESTONE_VERSION}" \
+      -t epic -p 1 \
+      --label "milestone-${MILESTONE_VERSION}" \
+      --description="GSD milestone ${MILESTONE_VERSION}" \
+      --json 2>/dev/null | jq -r '.id // empty')
+
+    # Create phase epics under the milestone epic (loop over phases from ROADMAP)
+    # For each phase N found in .planning/ROADMAP.md:
+    while IFS= read -r phase_line; do
+        PHASE_NUM=$(echo "$phase_line" | grep -oP '(?<=Phase )\d+' | head -1)
+        PHASE_NAME=$(echo "$phase_line" | sed 's/.*Phase [0-9]*[: ]*//' | head -c 60)
+        [ -z "$PHASE_NUM" ] && continue
+        EPIC_EXISTS=$(bd list -t epic --label "phase-${PHASE_NUM}" --json 2>/dev/null | jq '. | length')
+        if [ "${EPIC_EXISTS:-0}" = "0" ]; then
+            EPIC_ID=$(bd create "Epic: Phase ${PHASE_NUM} - ${PHASE_NAME}" \
+              -t epic -p 1 \
+              --label "phase-${PHASE_NUM}" \
+              --description="Milestone ${MILESTONE_VERSION} Phase ${PHASE_NUM}" \
+              --json 2>/dev/null | jq -r '.id // empty')
+            echo "📊 Created phase epic ${EPIC_ID} for phase ${PHASE_NUM}"
+        fi
+    done < <(grep -E '###? Phase [0-9]+' .planning/ROADMAP.md 2>/dev/null || true)
+
+    bd sync 2>/dev/null || true
+    echo "📊 Beads milestone ${MILESTONE_EPIC} created for ${MILESTONE_VERSION}"
+fi
+```
+
 ## 11. Done
 
 ```

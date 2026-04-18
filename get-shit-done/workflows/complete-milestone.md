@@ -762,6 +762,31 @@ git commit -m "chore: remove REQUIREMENTS.md for v[X.Y] milestone"
 
 Confirm: "Committed: chore: remove REQUIREMENTS.md for v[X.Y] milestone"
 
+```bash
+if command -v bd &>/dev/null && [ -d .beads ]; then
+    MILESTONE_VERSION="${VERSION:-unknown}"
+
+    # Close milestone epic
+    MILESTONE_EPIC=$(bd list -t epic --label "milestone-${MILESTONE_VERSION}" --json 2>/dev/null | jq -r '.[0].id // empty')
+    if [ -n "$MILESTONE_EPIC" ]; then
+        bd close "$MILESTONE_EPIC" --reason "Milestone ${MILESTONE_VERSION} archived: $(date +%Y-%m-%d)" 2>/dev/null \
+          && echo "📊 Milestone epic ${MILESTONE_EPIC} closed" || true
+    fi
+
+    # Close all phase epics in this milestone
+    for PHASE_NUM in $(grep -oP '(?<=Phase )\d+' .planning/ROADMAP.md 2>/dev/null | sort -u); do
+        PHASE_EPIC=$(bd list -t epic --label "phase-${PHASE_NUM}" --json 2>/dev/null | jq -r '.[0].id // empty')
+        [ -z "$PHASE_EPIC" ] && continue
+        STATUS=$(bd show "$PHASE_EPIC" --json 2>/dev/null | jq -r '.status // "unknown"')
+        [ "$STATUS" = "closed" ] && continue
+        bd close "$PHASE_EPIC" --reason "Phase ${PHASE_NUM} completed in milestone ${MILESTONE_VERSION}" 2>/dev/null || true
+        echo "📊 Phase ${PHASE_NUM} epic closed"
+    done
+
+    bd sync 2>/dev/null || true
+fi
+```
+
 </step>
 
 <step name="offer_next">
